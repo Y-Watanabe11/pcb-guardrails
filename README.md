@@ -17,13 +17,14 @@ OPEN 0 / SHORT 1 / NO-COPPER 0 / pads of parts not in the schematic 0 / copper i
 FAIL
 ```
 
-## What it checks (v0.1)
+## What it checks
 
 | Command | Catches | How |
 |---|---|---|
 | `netcheck` | **OPEN** (a net split into pieces), **SHORT** (two nets on one piece of copper), **NO-COPPER** (a pad with no copper in the files), no-connect pins touching a net | Parses the Gerber copper layers and Excellon drills into geometry, joins copper through plated holes, and compares the resulting pieces with the **schematic** netlist. The CAD tool's connectivity engine is never used. Pad *positions* come from the `.kicad_pcb`; its nets are ignored. |
 | `fill` | Pours / planes missing from the Gerbers (e.g. zones never filled before plotting — this exports cleanly, with no error) | Copper area per layer relative to the board area; fail below `--min LAYER=RATIO`. |
 | `dfm` | Values below your fab's minimums | Measures trace widths, gaps **between conductors** and **within one conductor**, copper-to-edge, drill sizes, hole-to-hole, hole-to-edge, via and PTH annular rings, silk line widths. Judges only against a rules file **you** fill in (`--rules`). |
+| `freeze` | A frozen file rewritten or changed by a later tool run (a "save" that dropped nets, a regenerated board, a re-export into the upload folder) | `freeze record` stores a SHA-256 and a fingerprint of what each file means; `freeze check` reports SAME / **EQUIVALENT** (bytes differ, geometry or content identical: new UUIDs, dates, aperture numbers, item order) / **CHANGED** / MISSING / NEW. |
 | `layers` | Wrong or missing files in the upload folder | Shows how each file was classified (X2 `FileFunction`, falling back to Protel/KiCad extensions). |
 
 Every check is proven by tests that inject one fault each into a small synthetic board — a deleted trace, an
@@ -60,6 +61,30 @@ pcb-guardrails fill     fab/gerbers --min In1.Cu=0.8          # a solid inner gr
 pcb-guardrails dfm      fab/gerbers --pcb board.kicad_pcb --rules my_fab_rules.json
 ```
 
+### Design freeze
+
+```bash
+pcb-guardrails freeze record fab/gerbers board.kicad_pcb board.kicad_sch -o freeze.json   # at the freeze
+pcb-guardrails freeze check freeze.json        # after every tool run; exit 1 on any rewrite or change
+pcb-guardrails freeze check freeze.json --allow-equivalent   # accept rewrites that changed nothing real
+```
+
+Folders are recorded non-recursively (hidden files skipped) and new files in them are reported. Paths are stored
+relative to the record, so commit it next to the files. What the fingerprint ignores:
+
+| File | Fingerprint covers | Ignores |
+|---|---|---|
+| Gerber | the geometry after parsing (union of all objects, 0.1 µm grid) and the X2 file function | comments, attributes, dates, aperture numbers, object order, how the copper is split into objects |
+| Excellon | every hole: plating, diameter, position, slot extent; the file function | comments, tool numbers, hole order |
+| `.gbrjob` | the job JSON | `Header.CreationDate`, `Header.GenerationSoftware` |
+| `.kicad_pcb` / `_sch` / `_sym` / `_mod` | the S-expression | UUID values, `uuid` / `tstamp` / `generator` entries, sibling order (kept for polygon points, stack-up, table cells), quoted vs unquoted words, `1` vs `1.0`, `(at x y 0)` vs `(at x y)` |
+| anything else | bytes only | nothing |
+
+A changed KiCad board also lists its item counts that changed (`net 110 -> 0`, `segment 412 -> 411`) and, for
+boards, the number of net names used and the form of net references. A KiCad 10 format upgrade shows
+`net_ref_form number -> name` with `net_names_used` unchanged; a real loss of nets changes `net_names_used`.
+A format upgrade is reported as CHANGED, not EQUIVALENT: it is a different file the next tool will read.
+
 Point the commands at **the exact folder you upload** (unzip the archive first), not at a fresh export.
 
 ### Fab rules
@@ -85,11 +110,14 @@ fill it from your fab's current capabilities page, and pass it with `--rules`.
   apertures, aperture macros (primitives 1, 4, 5, 20, 21), regions, multi-quadrant arcs, dark and clear
   polarity. Step-and-repeat, image transforms (`%LM/LR/LS%`) and single-quadrant arcs stop with exit 2.
 - Excellon: decimal coordinates, plating from X2 `TA.AperFunction` or the file function; drilled and routed slots.
+- `freeze`: EQUIVALENT ignores UUID values, so a changed symbol ↔ footprint link (`path`) alone is not reported.
+  A Gerber change hidden under other copper (a trace end moved inside a pad) is EQUIVALENT, because the copper
+  is identical. Files the fingerprint cannot parse fall back to bytes only and are never EQUIVALENT.
 
 ## Roadmap
 
-- v0.2: schematic/PCB guardrails — library existence check before generation, track endpoints on wrong-net pads,
-  design-freeze fingerprints, DNP consistency.
+- v0.2: design-freeze fingerprints (done); schematic/PCB guardrails — library existence check before generation,
+  track endpoints on wrong-net pads, DNP consistency.
 - v0.3: assembly — JLCPCB BOM/CPL helpers and per-part rotation offsets, 1:1 footprint print templates,
   headless LTspice batch runs.
 

@@ -37,8 +37,11 @@ time or nearly cost hardware. Put this file (or a link to it) where your agent r
 - Before overwriting any file, confirm it is committed (or backed up) and look at what is there.
 - Run anything that writes (DRC with "save", zone refill with save, format upgrades, regenerators) on a **copy**.
   One CLI "save after DRC" removed every net declaration from a board file.
-- After a design freeze, record a hash of each frozen file and re-check it after every tool run. Regenerating a
-  file can change it (new UUIDs, reordered items) even when the geometry is identical.
+- After a design freeze, record a hash of each frozen file and re-check it after every tool run
+  (`pcb-guardrails freeze record` / `freeze check`). Regenerating a file can change it (new UUIDs, reordered
+  items) even when the geometry is identical; `freeze check` reports that as EQUIVALENT, a real change as CHANGED.
+  Treat EQUIVALENT as a rewrite of a frozen file too: report it, and restore from the backup unless the human
+  accepts it.
 - Do not run auto-routers or bulk "fix" operations on a frozen board.
 
 ## 5. Ask before acting when the cost of being wrong is high

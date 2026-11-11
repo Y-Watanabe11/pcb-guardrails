@@ -20,6 +20,9 @@ re-export to "make it pass" without saying so: the point is to check what the fa
 5. Manufacturing minimums: `pcb-guardrails dfm <gerber-folder> --pcb <board>.kicad_pcb --rules <rules.json>` —
    only with a rules file the human filled from the fab's current capabilities. Without one, report the
    measurements and say they were not judged.
+6. Design freeze (when the project has a freeze record): `pcb-guardrails freeze check <freeze.json>` after every
+   tool run that could write files. Report EQUIVALENT files as rewritten (not as unchanged) and CHANGED files with
+   their listed changes. Do not re-record (`freeze record --force`) to make it pass; that is the human's decision.
 
 Write outputs to a scratch/temporary folder, not into the project, unless asked.
 

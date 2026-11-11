@@ -2,7 +2,7 @@
 
 Exit codes (stable, for agents and CI):
     0  all checks passed
-    1  a check failed (OPEN / SHORT / missing copper / rule violation / pour missing)
+    1  a check failed (OPEN / SHORT / missing copper / rule violation / pour missing / frozen file changed)
     2  the input could not be checked (unsupported Gerber feature, missing file, bad arguments)
 A result of 2 must never be read as "probably fine".
 """
@@ -17,6 +17,7 @@ from pathlib import Path
 from . import __version__
 from .dfm import apply_rules, run_dfm
 from .fill import run_fill
+from . import freeze as _freeze
 from .gerber import UnsupportedInput, discover
 from .kicad import copper_name, load_netlist, load_pcb
 from .netcheck import run_netcheck
@@ -129,6 +130,38 @@ def cmd_fill(a) -> int:
     return PASS if r["ok"] else FAIL
 
 
+def cmd_freeze_record(a) -> int:
+    out = Path(a.output)
+    if out.exists() and not a.force:
+        raise ValueError(f"{out} exists; it may be the record you need to check against. Pass --force to replace it")
+    rec = _freeze.record(a.paths, out)
+    for rel, f in rec["files"].items():
+        fp = "fingerprint" if f["fingerprint"] else "bytes only"
+        print(f"  {f['kind']:<6} {fp:<11} {rel}" + (f"  ({f['note']})" if f["note"] else ""))
+    for d in rec["subdirs_not_recorded"]:
+        print(f"  (subfolder not recorded: {d})")
+    out.write_text(json.dumps(rec, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"recorded {len(rec['files'])} files in {out}")
+    return PASS
+
+
+def cmd_freeze_check(a) -> int:
+    r = _freeze.check(a.record, allow_equivalent=a.allow_equivalent)
+    for e in r.entries:
+        if e["status"] == "SAME" and not a.verbose:
+            continue
+        print(f"  {e['status']:<10} {e['path']}" + (f"  ({e['note']})" if e["note"] else ""))
+        for c in e["changes"]:
+            print(f"             {c}")
+    print(" / ".join(f"{k} {v}" for k, v in r.to_dict()["counts"].items()))
+    if r.count("EQUIVALENT") and not a.allow_equivalent:
+        print("(EQUIVALENT files were rewritten without a real change; restore them from the backup, or pass "
+              "--allow-equivalent if a rewrite is acceptable)")
+    _write_json(a.json, r.to_dict())
+    print("PASS" if r.ok else "FAIL")
+    return PASS if r.ok else FAIL
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="pcb-guardrails", description="Independent checks of PCB fab outputs.")
     ap.add_argument("--version", action="version", version=__version__)
@@ -162,10 +195,25 @@ def main(argv=None) -> int:
     p.add_argument("--json")
     p.set_defaults(fn=cmd_fill)
 
+    p = sub.add_parser("freeze", help="design freeze: record fingerprints of frozen files, then check nothing changed")
+    fsub = p.add_subparsers(dest="freeze_cmd", required=True)
+    q = fsub.add_parser("record", help="fingerprint files / folders (folders: their files, not recursive)")
+    q.add_argument("paths", nargs="+")
+    q.add_argument("-o", "--output", required=True, help="freeze record to write (JSON); paths are stored relative to it")
+    q.add_argument("--force", action="store_true", help="replace an existing record")
+    q.set_defaults(fn=cmd_freeze_record)
+    q = fsub.add_parser("check", help="compare the files with a freeze record")
+    q.add_argument("record")
+    q.add_argument("--allow-equivalent", action="store_true",
+                   help="pass files whose bytes changed but whose geometry/content did not (new UUIDs, dates, order)")
+    q.add_argument("--json")
+    q.add_argument("-v", "--verbose", action="store_true", help="also list unchanged files")
+    q.set_defaults(fn=cmd_freeze_check)
+
     a = ap.parse_args(argv)
     try:
         return a.fn(a)
-    except (UnsupportedInput, FileNotFoundError, ValueError) as e:
+    except (UnsupportedInput, OSError, ValueError) as e:
         print(f"CANNOT CHECK: {e}", file=sys.stderr)
         return CANNOT
 
