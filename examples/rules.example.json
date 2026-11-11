@@ -1,0 +1,14 @@
+{
+  "_how_to_fill": "Copy this file and replace every null with your fab's CURRENT published minimum (mm) for your exact layer count, copper weight and service tier. Keys left null are not judged. Do not fill from memory.",
+  "_source": "URL and date of the fab capabilities page you used",
+  "min_trace_width_mm": null,
+  "min_spacing_mm": null,
+  "min_spacing_same_net_mm": null,
+  "min_copper_to_edge_mm": null,
+  "min_drill_mm": null,
+  "min_hole_to_hole_mm": null,
+  "min_hole_to_edge_mm": null,
+  "min_via_annular_ring_mm": null,
+  "min_pth_annular_ring_mm": null,
+  "min_silk_line_mm": null
+}

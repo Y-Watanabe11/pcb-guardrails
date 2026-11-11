@@ -218,3 +218,36 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---- pcb-guardrails additions ----
+# macOS / editors
+.DS_Store
+.vscode/
+.idea/
+
+# KiCad temporary files (if a sample board is ever added)
+*-backups/
+*.kicad_prl
+fp-info-cache
+*.lck
+_autosave-*
+*.bak
+
+# LTspice output (v0.3)
+*.raw
+*.log
+
+# tool output
+out/
+reports/
+
+# Claude Code personal settings (skills under .claude/skills are shared)
+.claude/settings.local.json
+
+# never commit PDK / chip design data or private boards
+*.gds
+*.gds2
+*.oas
+*.cdl
+*.src.net
+private/
