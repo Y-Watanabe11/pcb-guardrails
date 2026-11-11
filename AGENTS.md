@@ -12,6 +12,7 @@ time or nearly cost hardware. Put this file (or a link to it) where your agent r
 - Check that every symbol, footprint and pin name you are about to use exists in the libraries on disk before
   generating anything. Do not substitute a generic symbol for a real part because it is easier to place:
   that silently deletes design information.
+  `pcb-guardrails libcheck --parts parts.csv` does the existence and pin/pad-number part of this.
 - Active parts: confirm the minimum supply voltage from the datasheet against the **worst-case** rail, not the
   nominal one. Part suggestions written for an earlier rail plan are a common trap.
 - Fab capabilities (trace/space, drill, annular ring) come from the fab's current published page for the exact
@@ -21,6 +22,8 @@ time or nearly cost hardware. Put this file (or a link to it) where your agent r
 
 - Keep connectivity in one human-reviewable place (a netlist table or the schematic) and generate the rest from
   it. To change the circuit, change the source and regenerate; do not hand-patch generated files.
+- Keep DNP decisions in the source as an explicit yes/no (`parts.csv` `dnp` column), never as prose; check them
+  with `pcb-guardrails dnp` after every regeneration.
 - Passing every automated check only proves the source was transcribed faithfully. It does not prove the
   source is right (a wrong resistor value or a reversed diode passes). Put review effort on the source.
 

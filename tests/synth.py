@@ -134,3 +134,89 @@ def make_plane_board(root: Path, filled: bool) -> Path:
     (g / "p-In2_Cu.g2").write_text(_gerber("Copper,L3,Inr", ""))
     (g / "p-B_Cu.gbl").write_text(_gerber("Copper,L4,Bot", "D11*\n" + _xy(5, 5, 3)))
     return g
+
+
+# ----------------------------------------------------------------------------- a project for libcheck / dnp
+_SYM = '''(kicad_symbol_lib (version 20241209) (generator "test")
+ (symbol "R" (property "Reference" "R") (property "Footprint" "Fp:R_SMD")
+  (symbol "R_1_1" (pin passive line (at 0 1 270) (length 1) (name "~") (number "1"))
+                  (pin passive line (at 0 -1 90) (length 1) (name "~") (number "2"))))
+ (symbol "RX" (extends "R") (property "Reference" "R"))
+ (symbol "U3" (property "Reference" "U")
+  (symbol "U3_1_1" (pin input line (at 0 0 0) (length 1) (name "A") (number "1"))
+                   (pin output line (at 0 0 0) (length 1) (name "B") (number "2"))
+                   (pin power_in line (at 0 0 0) (length 1) (name "GND") (number "3")))))
+'''
+_SYM_NESTED = '''(kicad_symbol_lib (version 20241209) (generator "test")
+ (symbol "C" (symbol "C_1_1" (pin passive line (at 0 0 0) (length 1) (number "1")) (pin passive line (at 0 0 0) (length 1) (number "2")))))
+'''
+
+
+def _fp(name, pads):
+    body = "".join(f' (pad "{n}" {k} rect (at {i} 0) (size 0.5 0.5) {"(drill 0.3) " if "hole" in k else ""}(layers {lay}))\n'
+                   for i, (n, k, lay) in enumerate(pads))
+    return f'(footprint "{name}" (version 20241229) (generator "test") (layer "F.Cu")\n{body})\n'
+
+
+def make_project(root: Path) -> dict[str, Path]:
+    """Libraries, tables, parts list, schematic (+ a sub-sheet used twice) and board, all consistent.
+
+    parts: R1 Lib:R / Fp:R_SMD, R2 Lib:RX (extends R; footprint left to the symbol default) DNP,
+           C1 Nested:C (from a nested table under ${SHARE}), U1 and U2 Lib:U3 / Fp:SOT3 (one sheet used twice)
+    board: those five plus H1, a board-only mounting hole
+    """
+    proj, share = root / "proj", root / "share"
+    (proj / "lib" / "Test.pretty").mkdir(parents=True, exist_ok=True)
+    share.mkdir(parents=True, exist_ok=True)
+    (proj / "lib" / "Test.kicad_sym").write_text(_SYM)
+    (share / "Nested.kicad_sym").write_text(_SYM_NESTED)
+    fpd = proj / "lib" / "Test.pretty"
+    cu = '"F.Cu" "F.Mask"'
+    (fpd / "R_SMD.kicad_mod").write_text(_fp("R_SMD", [("1", "smd", cu), ("2", "smd", cu)]))
+    (fpd / "SOT3.kicad_mod").write_text(_fp("SOT3", [("1", "smd", cu), ("2", "smd", cu), ("3", "smd", cu),
+                                                     ("", "smd", cu), ("4", "np_thru_hole", '"*.Mask"'), ("5", "smd", '"F.Paste"')]))
+    (fpd / "TAB4.kicad_mod").write_text(_fp("TAB4", [("1", "smd", cu), ("2", "smd", cu), ("3", "smd", cu), ("4", "smd", cu)]))
+    (fpd / "ONE.kicad_mod").write_text(_fp("ONE", [("1", "smd", cu)]))
+    (share / "nested-sym-table").write_text(
+        '(sym_lib_table (version 7)\n (lib (name "Nested") (type "KiCad") (uri "${SHARE}/Nested.kicad_sym") (options "") (descr "")))\n')
+    (proj / "sym-lib-table").write_text(
+        '(sym_lib_table (version 7)\n'
+        ' (lib (name "Lib") (type "KiCad") (uri "${KIPRJMOD}/lib/Test.kicad_sym") (options "") (descr ""))\n'
+        ' (lib (name "Off") (type "KiCad") (uri "${KIPRJMOD}/lib/Test.kicad_sym") (options "") (descr "") (disabled))\n'
+        ' (lib (name "More") (type "Table") (uri "${SHARE}/nested-sym-table") (options "") (descr "")))\n')
+    (proj / "fp-lib-table").write_text(
+        '(fp_lib_table (version 7)\n (lib (name "Fp") (type "KiCad") (uri "${KIPRJMOD}/lib/Test.pretty") (options "") (descr "")))\n')
+    write_parts(proj / "parts.csv", [("R1", "Lib:R", "Fp:R_SMD", "no"), ("R2", "Lib:RX", "", "yes"),
+                                      ("C1", "Nested:C", "Fp:R_SMD", ""), ("U1", "Lib:U3", "Fp:SOT3", "no"),
+                                      ("U2", "Lib:U3", "Fp:SOT3", "no")])
+
+    def sym(lib_id, ref, fp, dnp="no", extra=""):
+        return (f' (symbol (lib_id "{lib_id}") (at 0 0 0) (unit 1) (in_bom yes) (on_board yes) (dnp {dnp}) (uuid "{_u(ref)}")\n'
+                f'  (property "Reference" "{ref}" (at 0 0 0)) (property "Footprint" "{fp}" (at 0 0 0)){extra})\n')
+    (proj / "board.kicad_sch").write_text(
+        '(kicad_sch (version 20250114) (generator "test")\n'
+        ' (lib_symbols (symbol "power:GND" (power) (pin_names (offset 0))) (symbol "Lib:R" (property "Reference" "R")))\n'
+        + sym("Lib:R", "R1", "Fp:R_SMD") + sym("Lib:RX", "R2", "Fp:R_SMD", "yes") + sym("Nested:C", "C1", "Fp:R_SMD")
+        + ' (symbol (lib_id "power:GND") (at 0 0 0) (unit 1) (property "Reference" "PWR01") (property "Footprint" ""))\n'
+        ' (sheet (at 0 0) (size 10 10) (property "Sheetname" "ch") (property "Sheetfile" "channel.kicad_sch"))\n'
+        ' (sheet (at 20 0) (size 10 10) (property "Sheetname" "ch2") (property "Sheetfile" "channel.kicad_sch")))\n')
+    inst = ' (instances (project "board" (path "/a/b" (reference "U1") (unit 1)) (path "/a/c" (reference "U2") (unit 1))))'
+    (proj / "channel.kicad_sch").write_text('(kicad_sch (version 20250114) (generator "test")\n'
+                                           + sym("Lib:U3", "U?", "Fp:SOT3", extra=inst) + ")\n")
+
+    def fp(ref, attrs):
+        return f' (footprint "Fp:X" (layer "F.Cu") (at 0 0) (attr {attrs}) (property "Reference" "{ref}"))\n'
+    (proj / "board.kicad_pcb").write_text(
+        '(kicad_pcb (version 20240108) (generator "test")\n'
+        + fp("R1", "smd") + fp("R2", "smd dnp") + fp("C1", "smd") + fp("U1", "smd") + fp("U2", "smd")
+        + fp("H1", "board_only exclude_from_pos_files exclude_from_bom") + ")\n")
+    return {"proj": proj, "share": share, "parts": proj / "parts.csv", "sch": proj / "board.kicad_sch",
+            "pcb": proj / "board.kicad_pcb"}
+
+
+def _u(ref: str) -> str:
+    return f"{sum(map(ord, ref)):08x}-0000-4000-8000-000000000000"
+
+
+def write_parts(path: Path, rows, header=("ref", "symbol", "footprint", "dnp")) -> None:
+    path.write_text(",".join(header) + "\n" + "".join(",".join(r) + "\n" for r in rows), encoding="utf-8")

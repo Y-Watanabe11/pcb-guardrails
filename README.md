@@ -25,6 +25,9 @@ FAIL
 | `fill` | Pours / planes missing from the Gerbers (e.g. zones never filled before plotting — this exports cleanly, with no error) | Copper area per layer relative to the board area; fail below `--min LAYER=RATIO`. |
 | `dfm` | Values below your fab's minimums | Measures trace widths, gaps **between conductors** and **within one conductor**, copper-to-edge, drill sizes, hole-to-hole, hole-to-edge, via and PTH annular rings, silk line widths. Judges only against a rules file **you** fill in (`--rules`). |
 | `freeze` | A frozen file rewritten or changed by a later tool run (a "save" that dropped nets, a regenerated board, a re-export into the upload folder) | `freeze record` stores a SHA-256 and a fingerprint of what each file means; `freeze check` reports SAME / **EQUIVALENT** (bytes differ, geometry or content identical: new UUIDs, dates, aperture numbers, item order) / **CHANGED** / MISSING / NEW. |
+| `wrongnet` | A track or via touching a pad of **another net** in the `.kicad_pcb` (a track end on the neighbouring pad of a mirrored footprint) | Real pad shapes (rect, roundrect, oval, trapezoid, custom; absolute angles) against track and via copper, per copper layer; net-tie footprints respected. Database-side; `netcheck` sees the same short in the Gerbers. |
+| `libcheck` | A symbol or footprint that does not exist on disk, a disabled library, a symbol pin with no footprint pad | Resolves `Library:Name` through the project and global `sym-lib-table` / `fp-lib-table` (nested tables, `${VARS}`), reads the `.kicad_sym` / `.kicad_mod`, compares pin and pad **numbers**. On a parts list before generation, or on a schematic. |
+| `dnp` | A DNP decision that did not reach the schematic or board; alternatives fitted together | Compares the DNP flag per part across `parts.csv`, `.kicad_sch` and `.kicad_pcb`; `--exclusive A,B` groups. Unclear values in the parts list (`DNP?`, `see D1`) stop the check. |
 | `layers` | Wrong or missing files in the upload folder | Shows how each file was classified (X2 `FileFunction`, falling back to Protel/KiCad extensions). |
 
 Every check is proven by tests that inject one fault each into a small synthetic board — a deleted trace, an
@@ -60,6 +63,23 @@ pcb-guardrails netcheck fab/gerbers --netlist board.net.xml --pcb board.kicad_pc
 pcb-guardrails fill     fab/gerbers --min In1.Cu=0.8          # a solid inner ground plane
 pcb-guardrails dfm      fab/gerbers --pcb board.kicad_pcb --rules my_fab_rules.json
 ```
+
+### Before and after generating a schematic / board
+
+```bash
+# parts.csv: ref,symbol,footprint,dnp   (see examples/parts.example.csv)
+pcb-guardrails libcheck --parts parts.csv --kicad-share <KiCad's folder with symbols/ and footprints/> \
+                        --global-tables <KiCad's user config folder>          # before generating
+pcb-guardrails libcheck --parts parts.csv --sch board.kicad_sch --kicad-share ... --global-tables ...
+pcb-guardrails dnp      --parts parts.csv --sch board.kicad_sch --pcb board.kicad_pcb --exclusive R1,R2
+pcb-guardrails wrongnet board.kicad_pcb
+```
+
+KiCad sets its library variables (`KICAD10_SYMBOL_DIR` ...) at run time and does not store them, so `libcheck`
+needs `--kicad-share` (it maps `KICADnn_SYMBOL_DIR` to `<dir>/symbols`, `..._FOOTPRINT_DIR` to `<dir>/footprints`)
+or `--var NAME=PATH`. On macOS that folder is `/Applications/KiCad/KiCad.app/Contents/SharedSupport` and the user
+config folder `~/Library/Preferences/kicad/<version>`. An unresolved variable, or a library that is not in the
+project table when no global tables were given, is exit 2, never "missing".
 
 ### Design freeze
 
@@ -104,20 +124,24 @@ fill it from your fab's current capabilities page, and pass it with `--rules`.
 ## Limitations
 
 - KiCad only for pad positions and the netlist format (Gerber/drill parsing itself is CAD-neutral).
-- Does not check symbol-pin ↔ footprint-pad mapping, footprint geometry against a datasheet, impedance,
+- Does not check what a pin *means* (`libcheck` compares pin and pad numbers only), footprint geometry against a datasheet, impedance,
   current capacity, creepage/clearance for high voltage, or anything electrical beyond connectivity.
 - Supported Gerber subset: RS-274X with X2 attributes, `%FSLA%`, mm or inch, circular/rect/obround/polygon
   apertures, aperture macros (primitives 1, 4, 5, 20, 21), regions, multi-quadrant arcs, dark and clear
   polarity. Step-and-repeat, image transforms (`%LM/LR/LS%`) and single-quadrant arcs stop with exit 2.
 - Excellon: decimal coordinates, plating from X2 `TA.AperFunction` or the file function; drilled and routed slots.
+- `libcheck`: KiCad-format libraries only (`.kicad_sym` files, `.pretty` folders); symbol libraries stored as a folder
+  and other library types stop with exit 2. Units of one symbol share one footprint.
+- `wrongnet`: trapezoid pads are taken as their bounding rectangle (may over-report); pads with a drill offset stop
+  with exit 2. Zones are not checked (use `netcheck` on the Gerbers).
 - `freeze`: EQUIVALENT ignores UUID values, so a changed symbol ↔ footprint link (`path`) alone is not reported.
   A Gerber change hidden under other copper (a trace end moved inside a pad) is EQUIVALENT, because the copper
   is identical. Files the fingerprint cannot parse fall back to bytes only and are never EQUIVALENT.
 
 ## Roadmap
 
-- v0.2: design-freeze fingerprints (done); schematic/PCB guardrails — library existence check before generation,
-  track endpoints on wrong-net pads, DNP consistency.
+- v0.2 (done): design-freeze fingerprints, library preflight with pin/pad numbers, tracks on wrong-net pads, DNP
+  consistency.
 - v0.3: assembly — JLCPCB BOM/CPL helpers and per-part rotation offsets, 1:1 footprint print templates,
   headless LTspice batch runs.
 

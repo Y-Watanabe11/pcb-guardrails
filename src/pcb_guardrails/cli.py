@@ -2,7 +2,7 @@
 
 Exit codes (stable, for agents and CI):
     0  all checks passed
-    1  a check failed (OPEN / SHORT / missing copper / rule violation / pour missing / frozen file changed)
+    1  a check failed (OPEN / SHORT / missing copper / rule violation / pour missing / frozen file changed / wrong-net pad)
     2  the input could not be checked (unsupported Gerber feature, missing file, bad arguments)
 A result of 2 must never be read as "probably fine".
 """
@@ -16,11 +16,15 @@ from pathlib import Path
 
 from . import __version__
 from .dfm import apply_rules, run_dfm
+from .dnp import run_dnp
 from .fill import run_fill
 from . import freeze as _freeze
 from .gerber import UnsupportedInput, discover
-from .kicad import copper_name, load_netlist, load_pcb
+from .kicad import copper_name, load_footprints, load_netlist, load_pcb, load_schematic
+from .libcheck import Item, Libraries, Vars, load_tables, run_libcheck
+from .parts import load_parts, natural_key
 from .netcheck import run_netcheck
+from .wrongnet import run_wrongnet
 
 PASS, FAIL, CANNOT = 0, 1, 2
 
@@ -130,6 +134,91 @@ def cmd_fill(a) -> int:
     return PASS if r["ok"] else FAIL
 
 
+def cmd_wrongnet(a) -> int:
+    r = run_wrongnet(a.pcb)
+    print(f"pads {r.pads}, tracks {r.tracks}, vias {r.vias}")
+    for h in r.hits:
+        print(f"  WRONG-NET {h['item']} of {h['item_net']} touches {h['pad']} ({h['pad_net']}) "
+              f"{'at its end' if h['where'] == 'end' else 'along its length'} at {h['at_kicad']} on {', '.join(h['layers'])}")
+    print(f"WRONG-NET {len(r.hits)}")
+    _write_json(a.json, r.to_dict())
+    print("PASS" if r.ok else "FAIL")
+    return PASS if r.ok else FAIL
+
+
+def _vars(specs):
+    out = {}
+    for spec in specs or []:
+        if "=" not in spec:
+            raise ValueError(f"--var {spec!r}: expected NAME=VALUE")
+        k, v = spec.split("=", 1)
+        out[k] = v
+    return out
+
+
+def cmd_libcheck(a) -> int:
+    if not a.parts and not a.sch:
+        raise ValueError("pass --parts and/or --sch")
+    project = Path(a.project_dir or Path(a.sch or a.parts).parent)
+    v = Vars(_vars(a.var), a.kicad_share, project.resolve())
+    libs = Libraries(load_tables("symbol", project, a.sym_lib_table or [], a.global_tables, v),
+                     load_tables("footprint", project, a.fp_lib_table or [], a.global_tables, v))
+    items, cross = [], []
+    parts = load_parts(a.parts) if a.parts else []
+    for pt in parts:
+        items.append(Item(pt.ref, pt.symbol, pt.footprint, True, f"{Path(a.parts).name}:{pt.line}"))
+    if a.sch:
+        by_ref = {}
+        for s in load_schematic(a.sch):
+            if s.ref in by_ref and by_ref[s.ref].lib_id != s.lib_id:
+                cross.append({"ref": s.ref, "problem": f"units use different symbols: {by_ref[s.ref].lib_id} / {s.lib_id}",
+                              "source": s.file})
+            by_ref.setdefault(s.ref, s)
+        if parts:
+            pmap = {pt.ref: pt for pt in parts}
+            for ref in sorted(set(pmap) - set(by_ref)):
+                cross.append({"ref": ref, "problem": "in the parts list but not in the schematic", "source": "schematic"})
+            for ref in sorted(set(by_ref) - set(pmap)):
+                cross.append({"ref": ref, "problem": "in the schematic but not in the parts list", "source": by_ref[ref].file})
+            for ref in sorted(set(pmap) & set(by_ref)):
+                pt, s = pmap[ref], by_ref[ref]
+                if pt.symbol and pt.symbol != s.lib_id:
+                    cross.append({"ref": ref, "problem": f"schematic uses {s.lib_id}, parts list says {pt.symbol}", "source": s.file})
+                if pt.footprint and pt.footprint != s.footprint:
+                    cross.append({"ref": ref, "problem": f"schematic footprint {s.footprint or '(none)'}, parts list says "
+                                  f"{pt.footprint}", "source": s.file})
+        else:
+            items += [Item(s.ref, s.lib_id, s.footprint, s.on_board, s.file, False) for s in by_ref.values()]
+    r = run_libcheck(items, libs)
+    r.fails = cross + r.fails
+    print(f"parts {r.items}: symbols found {r.symbols_ok}, footprints found {r.footprints_ok}")
+    for f in r.fails:
+        print(f"  FAIL {f['ref']}: {f['problem']}")
+    for w in r.warns:
+        print(f"  WARN {w['ref']}: {w['problem']}")
+    _write_json(a.json, r.to_dict())
+    print("PASS" if r.ok else "FAIL")
+    return PASS if r.ok else FAIL
+
+
+def cmd_dnp(a) -> int:
+    groups = [[r.strip() for r in g.split(",") if r.strip()] for g in a.exclusive or []]
+    if any(len(g) < 2 for g in groups):
+        raise ValueError("--exclusive needs at least two references, e.g. --exclusive R16,R17")
+    r = run_dnp(load_parts(a.parts) if a.parts else None, load_schematic(a.sch) if a.sch else None,
+                load_footprints(a.pcb) if a.pcb else None, groups)
+    for name, m in r.sources.items():
+        dnp = sorted((ref for ref, d in m.items() if d), key=natural_key)
+        print(f"  {name:<9} parts {len(m)}, DNP {len(dnp)}: {', '.join(dnp) or '-'}")
+    for f in r.fails:
+        print(f"  FAIL {f}")
+    for w in r.warns:
+        print(f"  WARN {w}")
+    _write_json(a.json, r.to_dict())
+    print("PASS" if r.ok else "FAIL")
+    return PASS if r.ok else FAIL
+
+
 def cmd_freeze_record(a) -> int:
     out = Path(a.output)
     if out.exists() and not a.force:
@@ -194,6 +283,32 @@ def main(argv=None) -> int:
     p.add_argument("--min", action="append", metavar="LAYER=RATIO", help="e.g. In1.Cu=0.8 (repeatable)")
     p.add_argument("--json")
     p.set_defaults(fn=cmd_fill)
+
+    p = sub.add_parser("wrongnet", help="tracks / vias in a .kicad_pcb touching a pad of a different net")
+    p.add_argument("pcb")
+    p.add_argument("--json")
+    p.set_defaults(fn=cmd_wrongnet)
+
+    p = sub.add_parser("libcheck", help="symbols / footprints exist on disk and their pin / pad numbers agree")
+    p.add_argument("--parts", help="parts.csv (ref,symbol,footprint[,dnp]); check before generating a schematic")
+    p.add_argument("--sch", help=".kicad_sch (with sub-sheets); with --parts, also compared with the parts list")
+    p.add_argument("--project-dir", help="folder with the project's sym-lib-table / fp-lib-table (default: that of --sch or --parts)")
+    p.add_argument("--global-tables", help="folder with KiCad's global sym-lib-table / fp-lib-table (KiCad's user config folder)")
+    p.add_argument("--kicad-share", help="KiCad's folder holding symbols/ and footprints/ (sets KICADnn_*_DIR)")
+    p.add_argument("--var", action="append", metavar="NAME=VALUE", help="a path variable used in the tables (repeatable)")
+    p.add_argument("--sym-lib-table", action="append", help="an extra symbol library table (repeatable)")
+    p.add_argument("--fp-lib-table", action="append", help="an extra footprint library table (repeatable)")
+    p.add_argument("--json")
+    p.set_defaults(fn=cmd_libcheck)
+
+    p = sub.add_parser("dnp", help="DNP agrees between the parts list, schematic and board; exclusive groups")
+    p.add_argument("--parts", help="parts.csv with a dnp column")
+    p.add_argument("--sch", help=".kicad_sch (with sub-sheets)")
+    p.add_argument("--pcb", help=".kicad_pcb")
+    p.add_argument("--exclusive", action="append", metavar="REF,REF[,REF]",
+                   help="parts that must never be fitted together (repeatable)")
+    p.add_argument("--json")
+    p.set_defaults(fn=cmd_dnp)
 
     p = sub.add_parser("freeze", help="design freeze: record fingerprints of frozen files, then check nothing changed")
     fsub = p.add_subparsers(dest="freeze_cmd", required=True)
