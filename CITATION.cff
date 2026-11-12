@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "pcb-guardrails"
+abstract: "Independent checks of what the PCB fab actually receives (Gerber + drill vs. schematic netlist), for AI-assisted and human PCB design."
+authors:
+  - family-names: "Watanabe"
+    given-names: "Yuki"
+    orcid: "https://orcid.org/0009-0008-1813-9517"
+version: 0.2.0
+license: MIT
+repository-code: "https://github.com/Y-Watanabe11/pcb-guardrails"
+keywords:
+  - pcb
+  - gerber
+  - kicad
+  - netlist
+  - dfm
+  - ai-agents
