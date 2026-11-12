@@ -34,6 +34,28 @@ repository; the run used copies in a scratch folder.
 
 BREAKOUT and VIA-NO-HOLE report nothing on any of the 20 public boards or the two private boards.
 
+## Board edge
+
+`dfm` used to fail any layer with more than 0.01 mm² of copper outside the outline (whenever `--rules` was given).
+That failed 7 of the 20 boards, and it measured from the wrong line: the outline polygon was the **inner side** of
+the Edge.Cuts stroke, not its centre line. The copper "outside" was:
+
+| Board | Copper beyond the inner side of the stroke | Stroke width | What it is |
+|---|---|---|---|
+| interf_u, sonde xilinx, stickhub, video, nfc_antenna | 0.025–0.09 mm, pours along the edge | 0.05–0.2 mm | pours ending on the centre line (within 0.5 µm): at the edge, not past it |
+| royalblue54L_feather | 28 pads × 8 layers, 0.9 mm | 0.1 mm | castellated header: 1.0 mm plated holes centred on the edge, `(castellated_pads yes)` in the board setup |
+| multichannel (unrouted) | up to 72 mm | 0.05 mm | parts not yet placed on the board |
+
+Now the edge is the centre line (see the README, *Board edge*), and copper beyond it is sorted: off the board
+entirely, crossing the edge, or around a plated hole the edge cuts (castellated, noted only). The first two fail
+with or without rules; touching the edge is left to the fab's `min_copper_to_edge_mm`.
+
+Result on the 20 boards: `dfm` fails only multichannel (unrouted), with copper entirely off the board on F.Cu and
+B.Cu; royalblue gets the castellation note (28 holes); the pour boards measure 0.0005 mm copper-to-edge. Building the
+outline from centre lines showed that CAD tools leave gaps where an arc meets a line (0.04 µm on cm5_minima, 3.5 µm
+on nfc_antenna); end points closer than half the stroke width are now joined. `fill` and `netcheck` exit codes are
+unchanged on all boards.
+
 ## Drill / Gerber formats (step 3)
 
 | Export option | Before | After |

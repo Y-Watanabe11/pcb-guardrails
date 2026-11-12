@@ -16,7 +16,7 @@ from .kicad import copper_name
 def run_fill(files: FabFiles, minimums: dict[str, float] | None = None) -> dict:
     if not files.profile:
         raise UnsupportedInput("no board outline (Profile / Edge_Cuts) found; cannot compute coverage")
-    _, board = board_outline(files.profile)
+    board = board_outline(files.profile)
     n = len(files.copper)
     layers, failures = {}, []
     for num, _side, path in files.copper:

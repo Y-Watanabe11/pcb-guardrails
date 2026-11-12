@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .dfm import SPACING_KEYS, active_rules, apply_rules, run_dfm, unjudgeable
+from .dfm import SPACING_KEYS, active_rules, apply_rules, edge_problems, run_dfm, unjudgeable
 from .dnp import run_dnp
 from .fill import run_fill
 from . import freeze as _freeze
@@ -133,6 +133,17 @@ def cmd_dfm(a) -> int:
     for side, s in m["silk"].items():
         w = s["min_line_width_mm"]
         print(f"  silk {side}: min line {w} mm" if w is not None else f"  silk {side}: no stroked lines (flashes/regions only)")
+    edge = edge_problems(m)
+    for e in edge[:20]:
+        what = {"off-board": "copper entirely outside the board", "over-edge": "copper crosses the board edge"}[e["kind"]]
+        print(f"  EDGE {e['layer']}: {what}, {e['area_mm2']} mm2 reaching {e['beyond_edge_mm']} mm past the edge "
+              f"at {e['at_kicad']}")
+    if len(edge) > 20:
+        print(f"  ... {len(edge) - 20} more (see --json)")
+    ncast = m.get("edge", {}).get("castellated_holes", 0)
+    if ncast:
+        print(f"  NOTE: {ncast} plated holes are cut by the board edge (castellated); copper around them may pass "
+              "the edge. Castellation is a separate fab option: make sure it is ordered.")
     violations, not_judged = [], []
     if rules is not None:
         violations = apply_rules(m, rules)
@@ -145,7 +156,11 @@ def cmd_dfm(a) -> int:
             not_judged.append({"rule": "(all)", "reason": "every rule in the file is null"})
             print("  NOT JUDGED: every rule in the file is null")
     m["violations"], m["not_judged"], m["judged"] = violations, not_judged, rules is not None
+    m["edge_problems"] = edge
     _write_json(a.json, m)
+    if edge:   # needs no fab rule: copper outside the board is wrong for every fab
+        print("FAIL")
+        return FAIL
     if rules is None:
         print("MEASURED ONLY — not judged (pass --rules <your fab's rules.json> to judge)")
         return PASS

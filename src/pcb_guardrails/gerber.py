@@ -94,7 +94,9 @@ def _aperture_shape(kind: str, p: list[float], macros: dict[str, list[str]]):
     raise UnsupportedInput(f"aperture type {kind!r} is not defined")
 
 
-def _arc_points(x, y, nx, ny, i, j, ccw):
+def _arc_points(x, y, nx, ny, i, j, ccw, max_err=None):
+    """Points along an arc. ``max_err`` (mm, file units): also use enough points that no chord is further than that
+    from the true arc (the board outline needs this; copper does not)."""
     cx, cy = x + i, y + j
     r = math.hypot(x - cx, y - cy)
     a0, a1 = math.atan2(y - cy, x - cx), math.atan2(ny - cy, nx - cx)
@@ -106,7 +108,11 @@ def _arc_points(x, y, nx, ny, i, j, ccw):
     if abs(nx - x) < 1e-9 and abs(ny - y) < 1e-9:  # full circle
         a1 = a0 + (2 * math.pi if ccw else -2 * math.pi)
     k = max(8, int(abs(a1 - a0) / ARC_STEP))
-    return [(cx + r * math.cos(a0 + (a1 - a0) * t / k), cy + r * math.sin(a0 + (a1 - a0) * t / k)) for t in range(k + 1)]
+    if max_err and r > max_err:
+        k = max(k, math.ceil(abs(a1 - a0) / (2 * math.acos(1 - max_err / r))))
+    pts = [(cx + r * math.cos(a0 + (a1 - a0) * t / k), cy + r * math.sin(a0 + (a1 - a0) * t / k)) for t in range(k + 1)]
+    pts[0], pts[-1] = (x, y), (nx, ny)   # exact end points, so an outline of lines and arcs closes
+    return pts
 
 
 def file_function(text: str) -> tuple[str, ...] | None:
@@ -122,9 +128,11 @@ class GerberLayer:
     function: tuple[str, ...] | None
     objects: list = field(default_factory=list)          # shapely geometries, one per flash / stroke / region
     stroke_widths: dict[float, int] = field(default_factory=dict)  # circular-aperture D01 strokes: width -> count
+    lines: list = field(default_factory=list)            # centre lines of the strokes and region boundaries
 
 
-def parse_gerber(path: str | Path) -> GerberLayer:
+def parse_gerber(path: str | Path, arc_max_err: float | None = None) -> GerberLayer:
+    """``arc_max_err`` (mm): approximate arcs to within this distance (default: a fixed angular step)."""
     path = Path(path)
     txt = path.read_text(errors="replace")
     tokens = re.findall(r"%[^%]*%|[^%*]+\*", txt, re.S)
@@ -136,6 +144,7 @@ def parse_gerber(path: str | Path) -> GerberLayer:
     interp = "G01"
     region, reg_pts, reg_polys = False, [], []
     objs, widths, cache = [], {}, {}   # objs: (dark: bool, geometry) in file order
+    lines = []
     dark = True
 
     def num(s):
@@ -178,6 +187,7 @@ def parse_gerber(path: str | Path) -> GerberLayer:
             if len(reg_pts) >= 3:
                 reg_polys.append(reg_pts)
             objs.extend((dark, Polygon(p).buffer(0)) for p in reg_polys)
+            lines.extend(LineString(list(p) + [p[0]]) for p in reg_polys)
             region, reg_polys, reg_pts = False, [], []
             continue
         if re.fullmatch(r"(G54)?D(\d+)", c) and int(re.fullmatch(r"(G54)?D(\d+)", c).group(2)) >= 10:
@@ -215,7 +225,8 @@ def parse_gerber(path: str | Path) -> GerberLayer:
             if interp == "G01":
                 seg = [(x, y), (nx, ny)]
             else:
-                seg = _arc_points(x, y, nx, ny, num(is_) if is_ else 0.0, num(js) if js else 0.0, interp == "G03")
+                seg = _arc_points(x, y, nx, ny, num(is_) if is_ else 0.0, num(js) if js else 0.0, interp == "G03",
+                                  arc_max_err / unit if arc_max_err else None)
             if region:
                 if not reg_pts:
                     reg_pts = [(x, y)]
@@ -229,6 +240,8 @@ def parse_gerber(path: str | Path) -> GerberLayer:
                 w = p[0]
                 widths[round(w * unit, 4)] = widths.get(round(w * unit, 4), 0) + 1
                 line = LineString(seg) if len(seg) > 1 and (seg[0] != seg[-1] or len(seg) > 2) else None
+                if line is not None:
+                    lines.append(line)
                 objs.append((dark, line.buffer(w / 2, 16) if line is not None else Point(seg[0]).buffer(w / 2, 16)))
             x, y = nx, ny
             continue
@@ -258,7 +271,8 @@ def parse_gerber(path: str | Path) -> GerberLayer:
         objs = [g for g in objs if g.area > 0]
     if unit != 1.0:
         objs = [scale(o, unit, unit, origin=(0, 0)) for o in objs]
-    return GerberLayer(path, file_function(txt), objs, widths)
+        lines = [scale(o, unit, unit, origin=(0, 0)) for o in lines]
+    return GerberLayer(path, file_function(txt), objs, widths, lines)
 
 
 # ----------------------------------------------------------------------------- Excellon

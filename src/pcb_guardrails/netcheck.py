@@ -176,7 +176,7 @@ def run_netcheck(files: FabFiles, pads: list[Pad], netlist: Netlist,
     if files.profile:
         from .dfm import board_outline
         try:
-            outline = board_outline(files.profile)[0]
+            outline = board_outline(files.profile)
         except UnsupportedInput:
             outline = None   # no closed outline: castellated holes cannot be told apart, so none are skipped
     no_pin = []
