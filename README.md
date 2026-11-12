@@ -47,8 +47,15 @@ does not understand will report a broken board as clean.
 
 ## Install
 
+From GitHub (not on PyPI yet):
+
 ```bash
-pip install -e .            # from a clone
+pip install "git+https://github.com/Y-Watanabe11/pcb-guardrails@v0.2.0"
+```
+
+From a clone, for development:
+
+```bash
 pip install -e ".[dev]"     # with pytest
 ```
 
@@ -246,6 +253,7 @@ checks that a fab package has its files; pcb-guardrails checks what is in those 
 - ほかに、ベタの抜け（`fill`）、ファブの規則値との比較と基板外の銅（`dfm`）、凍結したファイルの書き換え（`freeze`）、
   別ネットのパッドに触れる配線（`wrongnet`）、ライブラリの実在とピン番号（`libcheck`）、DNP の食い違い（`dnp`）。
 - `netcheck --format agent` は AI エージェントが読んで動けるように、判定・証拠・原因の候補・次の手順を順に出力します。
+- インストール: `pip install "git+https://github.com/Y-Watanabe11/pcb-guardrails@v0.2.0"`（PyPI には未登録）。
 
 ## License
 
