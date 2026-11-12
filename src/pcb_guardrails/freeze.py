@@ -211,7 +211,7 @@ def _drill_fingerprint(path: Path, grid: float) -> tuple[str, dict]:
     holes = parse_drill(path)
     q = lambda v: round(v / grid)  # noqa: E731
     items = sorted((h.plated, q(h.diameter), q(h.xy[0]), q(h.xy[1]), tuple(q(b) for b in h.geom.bounds)) for h in holes)
-    ff = file_function(path.read_text(errors="replace")[:6000])
+    ff = file_function(path.read_text(encoding="utf-8", errors="replace")[:6000])
     sizes = collections.Counter(f"{round(h.diameter, 4)} {'PTH' if h.plated else 'NPTH'}" for h in holes)
     summary = {"function": ",".join(ff) if ff else None, "holes": len(holes), "sizes": dict(sorted(sizes.items()))}
     return _sha256(repr((ff, items)).encode()), summary

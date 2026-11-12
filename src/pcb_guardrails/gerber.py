@@ -134,7 +134,7 @@ class GerberLayer:
 def parse_gerber(path: str | Path, arc_max_err: float | None = None) -> GerberLayer:
     """``arc_max_err`` (mm): approximate arcs to within this distance (default: a fixed angular step)."""
     path = Path(path)
-    txt = path.read_text(errors="replace")
+    txt = path.read_text(encoding="utf-8", errors="replace")
     tokens = re.findall(r"%[^%]*%|[^%*]+\*", txt, re.S)
     macros: dict[str, list[str]] = {}
     aps: dict[int, tuple[str, list[float]]] = {}
@@ -294,7 +294,7 @@ def parse_drill(path: str | Path) -> list[Hole]:
     stop the check. Plating comes from X2 ``TA.AperFunction`` comments per tool, or from the file function when the
     whole file is one kind."""
     path = Path(path)
-    text = path.read_text(errors="replace")
+    text = path.read_text(encoding="utf-8", errors="replace")
     if not (text.lstrip().startswith("M48") or re.search(r"^M48\s*$", text, re.M)):
         return _parse_gerber_drill(path)
     lines = text.splitlines()
@@ -431,7 +431,7 @@ def discover(gerber_dir: str | Path) -> FabFiles:
     for p in sorted(d.iterdir()):
         if not p.is_file():
             continue
-        head = p.read_text(errors="replace")[:6000]
+        head = p.read_text(encoding="utf-8", errors="replace")[:6000]
         if head.lstrip().startswith("M48") or re.search(r"^M48\s*$", head, re.M):
             drills.append(p)
             continue

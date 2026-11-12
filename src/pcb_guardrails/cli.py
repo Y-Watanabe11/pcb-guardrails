@@ -155,7 +155,7 @@ def cmd_dfm(a) -> int:
     files = discover(a.gerbers)
     if not files.copper:
         raise UnsupportedInput("no copper layers found")
-    rules = json.loads(Path(a.rules).read_text()) if a.rules else None
+    rules = json.loads(Path(a.rules).read_text(encoding="utf-8")) if a.rules else None
     window = a.gap_window
     if rules:   # gaps are only searched up to the window: it must reach past the largest spacing rule
         window = max([window] + [float(rules[k]) + 0.05 for k in SPACING_KEYS if rules.get(k) is not None])
@@ -361,7 +361,20 @@ def cmd_freeze_check(a) -> int:
     return PASS if r.ok else FAIL
 
 
+def _utf8_output() -> None:
+    """Write UTF-8 when the output is a pipe or file in another encoding (Windows: the ANSI code page). Reports
+    use characters such as « » — that cp932 or cp1252 cannot all encode, and an agent reads the output from a pipe."""
+    for stream in (sys.stdout, sys.stderr):
+        enc = (getattr(stream, "encoding", None) or "").lower().replace("-", "")
+        if enc != "utf8" and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8")
+            except (ValueError, OSError):
+                pass
+
+
 def main(argv=None) -> int:
+    _utf8_output()
     ap = argparse.ArgumentParser(prog="pcb-guardrails", description="Independent checks of PCB fab outputs.")
     ap.add_argument("--version", action="version", version=__version__)
     sub = ap.add_subparsers(dest="cmd", required=True)
