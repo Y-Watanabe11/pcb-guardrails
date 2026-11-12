@@ -14,12 +14,21 @@ re-export to "make it pass" without saying so: the point is to check what the fa
    `kicad-cli sch export netlist --format kicadxml -o <tmp>/board.net.xml <board>.kicad_sch`
 2. Classify the files: `pcb-guardrails layers <gerber-folder>` — confirm every copper layer, the outline and the
    drill file(s) are present.
-3. Connectivity: `pcb-guardrails netcheck <gerber-folder> --netlist <tmp>/board.net.xml --pcb <board>.kicad_pcb --json <tmp>/netcheck.json`
+3. Connectivity: `pcb-guardrails netcheck <gerber-folder> --netlist <tmp>/board.net.xml --pcb <board>.kicad_pcb --format agent --json <tmp>/netcheck.json`
+   — read the agent report, follow its "next" steps and RULES, and pass its problems to the human as listed.
 4. Planes: `pcb-guardrails fill <gerber-folder> --min <plane layer>=<ratio>` for each layer that should be a
    pour (ask the human for the layers if the stack-up is not documented).
 5. Manufacturing minimums: `pcb-guardrails dfm <gerber-folder> --pcb <board>.kicad_pcb --rules <rules.json>` —
    only with a rules file the human filled from the fab's current capabilities. Without one, report the
    measurements and say they were not judged.
+6. Design database (when the `.kicad_sch` / `.kicad_pcb` are available):
+   `pcb-guardrails wrongnet <board>.kicad_pcb`, and when the project has a `parts.csv`:
+   `pcb-guardrails dnp --parts parts.csv --sch <board>.kicad_sch --pcb <board>.kicad_pcb` and
+   `pcb-guardrails libcheck --parts parts.csv --sch <board>.kicad_sch --kicad-share <dir> --global-tables <dir>`.
+   Ask the human for `--exclusive` groups if alternatives are documented but not listed.
+7. Design freeze (when the project has a freeze record): `pcb-guardrails freeze check <freeze.json>` after every
+   tool run that could write files. Report EQUIVALENT files as rewritten (not as unchanged) and CHANGED files with
+   their listed changes. Do not re-record (`freeze record --force`) to make it pass; that is the human's decision.
 
 Write outputs to a scratch/temporary folder, not into the project, unless asked.
 

@@ -12,6 +12,7 @@ time or nearly cost hardware. Put this file (or a link to it) where your agent r
 - Check that every symbol, footprint and pin name you are about to use exists in the libraries on disk before
   generating anything. Do not substitute a generic symbol for a real part because it is easier to place:
   that silently deletes design information.
+  `pcb-guardrails libcheck --parts parts.csv` does the existence and pin/pad-number part of this.
 - Active parts: confirm the minimum supply voltage from the datasheet against the **worst-case** rail, not the
   nominal one. Part suggestions written for an earlier rail plan are a common trap.
 - Fab capabilities (trace/space, drill, annular ring) come from the fab's current published page for the exact
@@ -21,6 +22,8 @@ time or nearly cost hardware. Put this file (or a link to it) where your agent r
 
 - Keep connectivity in one human-reviewable place (a netlist table or the schematic) and generate the rest from
   it. To change the circuit, change the source and regenerate; do not hand-patch generated files.
+- Keep DNP decisions in the source as an explicit yes/no (`parts.csv` `dnp` column), never as prose; check them
+  with `pcb-guardrails dnp` after every regeneration.
 - Passing every automated check only proves the source was transcribed faithfully. It does not prove the
   source is right (a wrong resistor value or a reversed diode passes). Put review effort on the source.
 
@@ -37,8 +40,11 @@ time or nearly cost hardware. Put this file (or a link to it) where your agent r
 - Before overwriting any file, confirm it is committed (or backed up) and look at what is there.
 - Run anything that writes (DRC with "save", zone refill with save, format upgrades, regenerators) on a **copy**.
   One CLI "save after DRC" removed every net declaration from a board file.
-- After a design freeze, record a hash of each frozen file and re-check it after every tool run. Regenerating a
-  file can change it (new UUIDs, reordered items) even when the geometry is identical.
+- After a design freeze, record a hash of each frozen file and re-check it after every tool run
+  (`pcb-guardrails freeze record` / `freeze check`). Regenerating a file can change it (new UUIDs, reordered
+  items) even when the geometry is identical; `freeze check` reports that as EQUIVALENT, a real change as CHANGED.
+  Treat EQUIVALENT as a rewrite of a frozen file too: report it, and restore from the backup unless the human
+  accepts it.
 - Do not run auto-routers or bulk "fix" operations on a frozen board.
 
 ## 5. Ask before acting when the cost of being wrong is high

@@ -1,0 +1,5 @@
+ref,symbol,footprint,dnp,note
+R1,Device:R,Resistor_SMD:R_0603_1608Metric,no,pull-up
+R2,Device:R,Resistor_SMD:R_0603_1608Metric,yes,alternative to R1; fit one of them
+C1,Device:C,Capacitor_SMD:C_0603_1608Metric,,
+U1,Regulator_Linear:AP2112K-3.3,,no,footprint left empty: the symbol's default is checked

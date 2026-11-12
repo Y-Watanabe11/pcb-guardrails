@@ -29,7 +29,9 @@ _SAFE_EXPR = re.compile(r"^[0-9.+\-*/() ]*$")
 
 
 def _ev(expr: str, params: dict[int, float]) -> float:
-    e = re.sub(r"\$(\d+)", lambda m: repr(params.get(int(m.group(1)), 0.0)), re.sub(r"\s+", "", expr))
+    # fixed-point and parenthesised: repr() would write 1e-05 (KiCad emits 0.000010) and a negative value after an
+    # operator must stay one operand
+    e = re.sub(r"\$(\d+)", lambda m: f"({params.get(int(m.group(1)), 0.0):.12f})", re.sub(r"\s+", "", expr))
     e = e.replace("x", "*").replace("X", "*")
     if not _SAFE_EXPR.match(e):
         raise UnsupportedInput(f"aperture macro expression not understood: {expr!r}")
@@ -269,16 +271,41 @@ class Hole:
 
 
 def parse_drill(path: str | Path) -> list[Hole]:
-    """Excellon with decimal coordinates (KiCad's default). Plating comes from X2 ``TA.AperFunction``
-    comments per tool, or from the file function (Plated / NonPlated) when the whole file is one kind."""
+    """Excellon, or a drill file written as Gerber X2 (``TF.FileFunction,Plated|NonPlated,...``).
+
+    Excellon coordinates may be decimal, or integers with an implied decimal point when the file states the digit
+    format: KiCad's ``; FORMAT={3:3/ ... }`` comment or a ``METRIC,TZ,000.000`` header. ``TZ`` (trailing zeros
+    kept) means leading zeros are suppressed: the number is right-aligned. ``LZ`` (leading zeros kept) means
+    trailing zeros are suppressed: the number is left-aligned. Integer coordinates without a stated digit format
+    stop the check. Plating comes from X2 ``TA.AperFunction`` comments per tool, or from the file function when the
+    whole file is one kind."""
     path = Path(path)
-    lines = path.read_text(errors="replace").splitlines()
+    text = path.read_text(errors="replace")
+    if not (text.lstrip().startswith("M48") or re.search(r"^M48\s*$", text, re.M)):
+        return _parse_gerber_drill(path)
+    lines = text.splitlines()
     ff = file_function("\n".join(lines[:40]))
     file_plated = {"Plated": True, "NonPlated": False}.get(ff[0]) if ff else None
     unit = 1.0
     tools: dict[int, tuple[float, bool | None]] = {}
     holes: list[Hole] = []
     cur, pending, routing, start = None, None, False, None
+    digits: tuple[int, int] | None = None    # (integer digits, decimal digits) for integer coordinates
+    zeros: str | None = None                 # "lead" suppressed (TZ), "trail" suppressed (LZ), "keep"
+
+    def coord(v: str) -> float:
+        if "." in v:
+            return float(v) * unit
+        if digits is None:
+            raise UnsupportedInput(f"{path.name}: integer Excellon coordinates but no digit format (e.g. FORMAT={{3:3/...}} "
+                                   "or METRIC,TZ,000.000) is stated")
+        sign, d = (-1, v[1:]) if v.startswith("-") else (1, v.lstrip("+"))
+        n, m_ = digits
+        if zeros == "trail":
+            d = d.ljust(n + m_, "0")
+        elif zeros is None and len(d) != n + m_:
+            raise UnsupportedInput(f"{path.name}: integer coordinate {v} without a stated zero-suppression mode")
+        return sign * int(d) / 10 ** m_ * unit
 
     def tool_plated(t):
         p = tools[t][1]
@@ -298,14 +325,25 @@ def parse_drill(path: str | Path) -> list[Hole]:
         if m:
             pending = m.group(1) == "Plated"
             continue
+        m = re.match(r";\s*FORMAT=\{(\d+):(\d+)/[^}]*\}", s)   # KiCad: ; FORMAT={3:3/ absolute / metric / suppress leading zeros}
+        if m:
+            digits = digits or (int(m.group(1)), int(m.group(2)))
+            low = s.lower()
+            zeros = zeros or ("lead" if "suppress leading" in low else "trail" if "suppress trailing" in low
+                              else "keep" if "keep zeros" in low else None)
+            continue
         if not s or s.startswith(";"):
             continue
-        if s.startswith("INCH"):
-            unit = 25.4
+        m = re.match(r"^(INCH|METRIC)(?:,(LZ|TZ))?(?:,(0+)\.(0+))?$", s)
+        if m:
+            unit = 25.4 if m.group(1) == "INCH" else 1.0
+            if m.group(2):
+                zeros = "trail" if m.group(2) == "LZ" else "lead"
+            if m.group(3):
+                digits = (len(m.group(3)), len(m.group(4)))
             continue
-        if s.startswith("METRIC"):
-            unit = 1.0
-            continue
+        if s.startswith(("INCH", "METRIC")):
+            raise UnsupportedInput(f"{path.name}: unit line {s!r} not understood")
         m = re.match(r"^T(\d+)(?:[FSB][\d.]+)*C([\d.]+)", s)
         if m:
             tools[int(m.group(1))] = (float(m.group(2)) * unit, pending)
@@ -323,14 +361,12 @@ def parse_drill(path: str | Path) -> list[Hole]:
         if s in ("M16", "M17"):
             routing = False
             continue
-        m = re.match(r"^(G0[01])?X(-?[\d.]+)Y(-?[\d.]+)(?:G85X(-?[\d.]+)Y(-?[\d.]+))?$", s)
+        m = re.match(r"^(G0[01])?X([-+]?[\d.]+)Y([-+]?[\d.]+)(?:G85X([-+]?[\d.]+)Y([-+]?[\d.]+))?$", s)
         if m and cur:
-            if "." not in m.group(2):
-                raise UnsupportedInput(f"{path.name}: only decimal Excellon coordinates are supported")
-            x1, y1 = float(m.group(2)) * unit, float(m.group(3)) * unit
+            x1, y1 = coord(m.group(2)), coord(m.group(3))
             r = tools[cur][0] / 2
             if m.group(4):  # G85 slot
-                x2, y2 = float(m.group(4)) * unit, float(m.group(5)) * unit
+                x2, y2 = coord(m.group(4)), coord(m.group(5))
                 add(LineString([(x1, y1), (x2, y2)]).buffer(r, 32), (x1, y1))
             elif m.group(1) == "G00":
                 start = (x1, y1)
@@ -342,6 +378,21 @@ def parse_drill(path: str | Path) -> list[Hole]:
             continue
         if re.match(r"^[XYGM]", s):
             raise UnsupportedInput(f"{path.name}: drill command {s!r} is not supported")
+    return holes
+
+
+def _parse_gerber_drill(path: Path) -> list[Hole]:
+    """A drill file written as Gerber X2: each flash is a hole, each stroke a routed slot."""
+    layer = parse_gerber(path)
+    ff = layer.function or ()
+    if not ff or ff[0] not in ("Plated", "NonPlated"):
+        raise UnsupportedInput(f"{path.name}: Gerber drill file without a Plated/NonPlated file function")
+    plated = ff[0] == "Plated"
+    holes = []
+    for g in layer.objects:
+        x0, y0, x1, y1 = g.bounds
+        c = g.centroid
+        holes.append(Hole(g, round(min(x1 - x0, y1 - y0), 4), plated, (c.x, c.y)))
     return holes
 
 
@@ -379,6 +430,8 @@ def discover(gerber_dir: str | Path) -> FabFiles:
                 profile = p
             elif ff[0] == "Legend":
                 legend[ff[1]] = p
+            elif ff[0] in ("Plated", "NonPlated"):   # drill / rout data written as Gerber X2 (label Drill, Rout or Mixed)
+                drills.append(p)   # a drill file written as Gerber X2
             continue
         if ext in _EXT_COPPER:
             copper.append((*_EXT_COPPER[ext], p))
