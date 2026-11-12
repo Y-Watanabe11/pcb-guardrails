@@ -53,6 +53,8 @@ under **Changed**.
 
 - License metadata as an SPDX expression (`MIT`); the source distribution includes the tests, docs, examples,
   `AGENTS.md` and this changelog.
+- Author metadata (`Yuki Watanabe`) in `pyproject.toml` and `LICENSE`; `CITATION.cff` for GitHub's "Cite this
+  repository".
 
 ## [0.1.0] — 2026-11-11
 
