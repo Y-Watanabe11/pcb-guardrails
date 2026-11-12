@@ -88,3 +88,29 @@ for `netcheck`.
 
 - `wrongnet` takes chamfered corners and trapezoids as full rectangles: it may over-report contact on those pads,
   never miss it (3 of 54 offset pads on royalblue differ from the Gerber by exactly their chamfered corners).
+
+## IPC-D-356 (`netcheck --ipc356`)
+
+Each board was also exported as IPC-D-356 with `kicad-cli pcb export ipcd356` (KiCad 10.0.4) and checked with
+`--ipc356` in place of the KiCad netlist, on the same Gerbers and drill files.
+
+| | |
+|---|---|
+| origin | KiCad writes the IPC file relative to the drill / place origin; the offset was found on all 18 boards with plated holes, with every plated hole of the IPC file on a drill hit (2 to 4896 holes), e.g. (83.500, -138.001) mm on complex_hierarchy |
+| exit codes | identical to the KiCad mode on all 18 boards that have both (royalblue 54 OPEN and 183 undrillable vias, tiny_tapeout 1 OPEN 2 SHORT, unrouted multichannel 61 OPEN, the rest PASS) |
+| openair-max | KiCad mode: GND OPEN (schematic and board disagree) and the F2 trace-fuse SHORT. IPC mode: no OPEN (the board's own nets are used, so the disagreement is invisible) and two SHORTs: F2, and the drain tabs of Q1 / Q2, whose pad 9 has no symbol pin and gets an unconnected net of its own in the IPC file |
+| microwave | exit 2: no plated holes to align on (an all-SMD board); `--ipc356-offset` is needed |
+| time | the same as the KiCad mode (jetson 308 s, vme-wren 489 s on a loaded machine) |
+
+Defects found on the way and fixed, each with a test:
+
+| Found on | Defect | Fix |
+|---|---|---|
+| ecc83-pp_v2, multichannel | alignment failed (25 of 34 holes): a slot's drill-file position is where the router starts, not its centre | holes aligned on their centres |
+| jetson | SHORT between 7 copies of U30 pad 57: KiCad gives each copy of an unconnected, repeated pad number (a thermal pad and its vias) its own net, and the footprint's copper joins them | a SHORT made only of copies of one pad name is a warning |
+
+The name limits of the format are visible on these boards: up to 1345 net names per board fill the 14-character
+field (KiCad 10.0.4 keeps the last 14 characters), and references are cut to 6 (21 pad names on kit-dev-coldfire
+repeat with different nets and are kept apart as `REF#n`). Two separately routed nets cut to one name would show
+as an extra OPEN; none appeared, since every OPEN / SHORT count matches the KiCad mode except where explained. A short
+between two such nets would be invisible in this mode.

@@ -106,7 +106,8 @@ def _file_level(rep, r) -> None:
                     ["vias in the board have a near-zero drill size (KiCad writes them as 0.000)"],
                     "these holes connect no layers; ask the human what drill size the vias should have")
     for v in r.vias_without_hole[:MAX_ITEMS]:
-        rep.problem("VIA-NO-HOLE", f"a via of the board ({v['drill_mm']} mm drill) has no plated hole in the drill files",
+        size = "" if v["drill_mm"] is None else f" ({v['drill_mm']} mm drill)"
+        rep.problem("VIA-NO-HOLE", f"a via of the board{size} has no plated hole in the drill files",
                     [f"at {_xy(v['xy_kicad'])}"],
                     ["the drill file is older than the board", "a separate drill file (blind / buried vias) is not in the folder"],
                     "make sure the drill files come from the same export as the Gerbers; ask the human")
@@ -125,8 +126,10 @@ def _file_level(rep, r) -> None:
                     "check that every copper layer was exported with the same origin as the drill file; ask before re-exporting")
 
 
-def render_netcheck(r, files) -> str:
-    rep = _Report("netcheck (Gerber + drill connectivity vs. the schematic netlist)")
+def render_netcheck(r, files, source: list[str] | None = None) -> str:
+    ipc = any(line.startswith("nets from IPC-D-356") for line in source or [])
+    rep = _Report("netcheck (Gerber + drill connectivity vs. the "
+                  + ("board's IPC-D-356 netlist)" if ipc else "schematic netlist)"))
     _file_level(rep, r)   # problems in the files themselves first: OPEN / SHORT below are often their consequences
     for o in r.opens:
         causes, nxt = _open_causes(o)
@@ -167,6 +170,8 @@ def render_netcheck(r, files) -> str:
                f"{n(len(files.drills), 'drill file')}: {names(p.name for _, _, p in files.copper)}, {names(p.name for p in files.drills)}",
                "every net is one piece of copper (OPEN), no two nets share copper (SHORT), every pad has copper (NO-COPPER)",
                "plated holes sit inside their copper (BREAKOUT) and every via of the board has a hole (VIA-NO-HOLE)"]
+    checked += [f"note: {line}" for line in source or [] if not line.startswith("WARN ")]
+    rep.warnings += [line[5:] for line in source or [] if line.startswith("WARN ")]
     not_checked = ["design rules: trace width, clearance, annular ring, hole sizes (pcb-guardrails dfm --rules <fab rules>)",
                    "whether pours cover enough area (pcb-guardrails fill --min LAYER=RATIO)",
                    "solder mask, paste, silkscreen, assembly files (BOM / placement)",

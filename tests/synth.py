@@ -221,3 +221,28 @@ def _u(ref: str) -> str:
 
 def write_parts(path: Path, rows, header=("ref", "symbol", "footprint", "dnp")) -> None:
     path.write_text(",".join(header) + "\n" + "".join(",".join(r) + "\n" for r in rows), encoding="utf-8")
+
+
+# ----------------------------------------------------------------------------- IPC-D-356 for the board above
+def d356_line(op, net, ref, pin, xy, hole=None, access=0, mid=False):
+    """One record in the column layout KiCad 10.0.4 writes (positions in 0.0001 inch, y up)."""
+    u = lambda v: round(v / 0.00254)   # noqa: E731
+    head = f"{op:03d}{net:<14.14}   {ref:<6.6}{'-' if pin else ' '}{pin:<4.4}{'M' if mid else ' '}"
+    h = f"D{u(hole[0]):04d}{hole[1]}" if hole else "      "
+    return head + h + f"A{access:02d}X{u(xy[0]):+07d}Y{u(xy[1]):+07d}X0394Y0394R000S0"
+
+
+def make_d356(path: Path, offset=(5.0, -3.0), units="CUST 0", extra=(), drop=()) -> Path:
+    """The synthetic board's IPC-D-356, with positions shifted by -offset (another origin, as KiCad's aux origin)."""
+    at = lambda x, y: (x - offset[0], y - offset[1])   # noqa: E731
+    rows = [("R1.1", (327, "/B", "R1", "1", at(9, 10), None, 1)),
+            ("R1.2", (327, "/A", "R1", "2", at(11, 10), None, 1)),
+            ("R2.1", (317, "/A", "R2", "1", at(19, 10), (0.8, "P"), 0)),
+            ("R2.2", (317, "/B", "R2", "2", at(21, 10), (0.8, "P"), 0)),
+            ("U1.1", (327, "N/C", "U1", "1", at(25, 10), None, 1)),
+            ("via", (317, "/B", "VIA", "", at(15, 14), (0.3, "P"), 0))]
+    lines = ["C  synthetic test board", "P  CODE 00", f"P  UNITS {units}", "P  arrayDim   N"]
+    lines += [d356_line(*r, mid=(k == "via")) for k, r in rows if k not in drop]
+    lines += list(extra) + ["999"]
+    path.write_text("\n".join(lines) + "\n")
+    return path

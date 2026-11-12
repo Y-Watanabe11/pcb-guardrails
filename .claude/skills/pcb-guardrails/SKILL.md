@@ -16,6 +16,9 @@ re-export to "make it pass" without saying so: the point is to check what the fa
    drill file(s) are present.
 3. Connectivity: `pcb-guardrails netcheck <gerber-folder> --netlist <tmp>/board.net.xml --pcb <board>.kicad_pcb --format agent --json <tmp>/netcheck.json`
    — read the agent report, follow its "next" steps and RULES, and pass its problems to the human as listed.
+   For a board from another CAD tool, use its IPC-D-356 netlist instead: `--ipc356 <board>.ipc` (no `--netlist` /
+   `--pcb`). Tell the human that this compares with the board's nets, not the schematic's, and quote the offset
+   and the notes the report prints.
 4. Planes: `pcb-guardrails fill <gerber-folder> --min <plane layer>=<ratio>` for each layer that should be a
    pour (ask the human for the layers if the stack-up is not documented).
 5. Manufacturing minimums: `pcb-guardrails dfm <gerber-folder> --pcb <board>.kicad_pcb --rules <rules.json>` —
