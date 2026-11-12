@@ -14,7 +14,8 @@ re-export to "make it pass" without saying so: the point is to check what the fa
    `kicad-cli sch export netlist --format kicadxml -o <tmp>/board.net.xml <board>.kicad_sch`
 2. Classify the files: `pcb-guardrails layers <gerber-folder>` — confirm every copper layer, the outline and the
    drill file(s) are present.
-3. Connectivity: `pcb-guardrails netcheck <gerber-folder> --netlist <tmp>/board.net.xml --pcb <board>.kicad_pcb --json <tmp>/netcheck.json`
+3. Connectivity: `pcb-guardrails netcheck <gerber-folder> --netlist <tmp>/board.net.xml --pcb <board>.kicad_pcb --format agent --json <tmp>/netcheck.json`
+   — read the agent report, follow its "next" steps and RULES, and pass its problems to the human as listed.
 4. Planes: `pcb-guardrails fill <gerber-folder> --min <plane layer>=<ratio>` for each layer that should be a
    pour (ask the human for the layers if the stack-up is not documented).
 5. Manufacturing minimums: `pcb-guardrails dfm <gerber-folder> --pcb <board>.kicad_pcb --rules <rules.json>` —

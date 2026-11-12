@@ -23,6 +23,7 @@ from .gerber import UnsupportedInput, discover
 from .kicad import copper_name, load_footprints, load_net_ties, load_netlist, load_pcb, load_schematic
 from .libcheck import Item, Libraries, Vars, load_tables, run_libcheck
 from .parts import load_parts, natural_key
+from .agent_report import render_cannot, render_netcheck
 from .netcheck import run_netcheck
 from .wrongnet import run_wrongnet
 
@@ -58,6 +59,23 @@ def cmd_netcheck(a) -> int:
     pads, vias = load_pcb(a.pcb)
     netlist = load_netlist(a.netlist)
     r = run_netcheck(files, pads, netlist, clearance_report=a.clearance_report, net_ties=load_net_ties(a.pcb), vias=vias)
+    if a.format == "agent":
+        print(render_netcheck(r, files), end="")
+    else:
+        _print_netcheck_text(r, files)
+    if a.net_csv:
+        with open(a.net_csv, "w", newline="", encoding="utf-8") as fo:
+            w = csv.writer(fo)
+            w.writerow(["net", "pads", "copper_pieces", "layers", "status", "pad_list"])
+            for row in r.per_net:
+                w.writerow([row["net"], row["pads"], row["copper_pieces"], " ".join(row["layers"]), row["status"], " ".join(row["pad_list"])])
+    _write_json(a.json, r.to_dict())
+    if a.format != "agent":
+        print("PASS" if r.ok else "FAIL")
+    return PASS if r.ok else FAIL
+
+
+def _print_netcheck_text(r, files) -> None:
     print(f"pads {r.pads}, schematic nets with pads {r.nets}, copper layers {len(files.copper)}, drill files {len(files.drills)}")
     print(f"OPEN {len(r.opens)} / SHORT {len(r.shorts)} / NO-COPPER {len(r.no_copper)} / BREAKOUT {len(r.breakouts)} / VIA-NO-HOLE {len(r.vias_without_hole)} / "
           f"pads of parts not in the schematic {len(r.not_in_netlist)} / copper islands without pads {len(r.islands)}")
@@ -87,15 +105,6 @@ def cmd_netcheck(a) -> int:
         m = c["min"]
         if m:
             print(f"  {l}: smallest gap between different copper {m['mm']} mm ({' / '.join(m['between'])}) at {m['at_kicad']}")
-    if a.net_csv:
-        with open(a.net_csv, "w", newline="", encoding="utf-8") as fo:
-            w = csv.writer(fo)
-            w.writerow(["net", "pads", "copper_pieces", "layers", "status", "pad_list"])
-            for row in r.per_net:
-                w.writerow([row["net"], row["pads"], row["copper_pieces"], " ".join(row["layers"]), row["status"], " ".join(row["pad_list"])])
-    _write_json(a.json, r.to_dict())
-    print("PASS" if r.ok else "FAIL")
-    return PASS if r.ok else FAIL
 
 
 def cmd_dfm(a) -> int:
@@ -285,6 +294,8 @@ def main(argv=None) -> int:
     p.add_argument("--net-csv", help="write one row per net")
     p.add_argument("--clearance-report", type=float, default=0.2, help="report copper gaps below this (mm), default 0.2")
     p.add_argument("--allow-no-drill", action="store_true")
+    p.add_argument("--format", choices=["text", "agent"], default="text",
+                   help="agent: a report for an AI agent to read (verdict, evidence, likely causes, next step)")
     p.set_defaults(fn=cmd_netcheck)
 
     p = sub.add_parser("dfm", help="measure trace widths, gaps, holes, rings; judge with --rules")
@@ -347,6 +358,8 @@ def main(argv=None) -> int:
         return a.fn(a)
     except (UnsupportedInput, OSError, ValueError) as e:
         print(f"CANNOT CHECK: {e}", file=sys.stderr)
+        if getattr(a, "format", "text") == "agent":
+            print(render_cannot(a.cmd, str(e)), end="")
         return CANNOT
 
 

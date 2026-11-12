@@ -116,9 +116,9 @@ class NetcheckResult:
     no_copper: list[dict]
     ties: list[dict]
     tiny_holes: list[dict]
-    pads_without_pin: list[dict]
+    pads_without_pin: list[dict]    # pads with no symbol pin that share copper with a net (pads alone are not listed)
     breakouts: list[dict]
-    vias_without_hole: list[dict]   # pads with no symbol pin that share copper with a net (pads alone are not listed)
+    vias_without_hole: list[dict]
     not_in_netlist: list[str]
     islands: list[dict]
     per_net: list[dict]
@@ -233,7 +233,8 @@ def run_netcheck(files: FabFiles, pads: list[Pad], netlist: Netlist,
             # node, e.g. two pins of a switch node) may share copper
             nets.add(f"unconnected:{q.name}" if q.net == f"unconnected-({q.name})" else q.net)
         if len(nets) > 1:
-            entry = {"nets": sorted(nets), "pads": sorted(q.name for q in pl)}
+            entry = {"nets": sorted(nets), "pads": sorted(q.name for q in pl),
+                     "pad_nets": {q.name: q.net for q in sorted(pl, key=lambda q: q.name) if q.net is not None}}
             if all(real(n) for n in nets) and len({tie.find(n) for n in nets}) == 1:
                 entry["net_ties"] = sorted({r for k, rs in tied_by.items() if k <= nets for r in rs})
                 ties.append(entry)

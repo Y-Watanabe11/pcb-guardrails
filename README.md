@@ -115,6 +115,12 @@ fill it from your fab's current capabilities page, and pass it with `--rules`.
 
 ## For AI agents
 
+`netcheck --format agent` prints a report written for a language model: the verdict and exit code first, what was
+and was not checked, and for each problem the evidence, likely causes (root causes such as undrilled vias before the
+OPENs they cause) and the next step, including what not to do. Names of nets and parts come from the design files
+and are printed only inside `«...»`, on one line, so a net named like an instruction cannot pass for part of the
+report. The JSON output (`--json`) carries the same facts for programs.
+
 - [`AGENTS.md`](AGENTS.md) — rules for an agent that designs or edits PCBs (pin numbers, sources of truth, what
   never to run on production files, when to stop and ask).
 - [`.claude/skills/pcb-guardrails/SKILL.md`](.claude/skills/pcb-guardrails/SKILL.md) — a Claude Code skill that
