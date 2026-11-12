@@ -55,11 +55,11 @@ def cmd_netcheck(a) -> int:
         raise UnsupportedInput("no copper layers found")
     if not files.drills and not a.allow_no_drill:
         raise UnsupportedInput("no drill file found (pass --allow-no-drill for single-layer boards without holes)")
-    pads, _ = load_pcb(a.pcb)
+    pads, vias = load_pcb(a.pcb)
     netlist = load_netlist(a.netlist)
-    r = run_netcheck(files, pads, netlist, clearance_report=a.clearance_report, net_ties=load_net_ties(a.pcb))
+    r = run_netcheck(files, pads, netlist, clearance_report=a.clearance_report, net_ties=load_net_ties(a.pcb), vias=vias)
     print(f"pads {r.pads}, schematic nets with pads {r.nets}, copper layers {len(files.copper)}, drill files {len(files.drills)}")
-    print(f"OPEN {len(r.opens)} / SHORT {len(r.shorts)} / NO-COPPER {len(r.no_copper)} / "
+    print(f"OPEN {len(r.opens)} / SHORT {len(r.shorts)} / NO-COPPER {len(r.no_copper)} / BREAKOUT {len(r.breakouts)} / VIA-NO-HOLE {len(r.vias_without_hole)} / "
           f"pads of parts not in the schematic {len(r.not_in_netlist)} / copper islands without pads {len(r.islands)}")
     for o in r.opens:
         print(f"  OPEN  {o['net']}: " + " | ".join(", ".join(g) for g in o["groups"]))
@@ -71,6 +71,14 @@ def cmd_netcheck(a) -> int:
     if r.tiny_holes:
         print(f"  WARN {len(r.tiny_holes)} plated holes in the drill files are smaller than 0.01 mm (e.g. at "
               f"{r.tiny_holes[0]['xy_kicad']}): they will not be drilled, so they connect no layers")
+    for v in r.vias_without_hole[:10]:
+        print(f"  VIA-NO-HOLE via ({v['drill_mm']} mm drill) at {v['xy_kicad']} in the .kicad_pcb has no plated hole in the drill files")
+    if len(r.vias_without_hole) > 10:
+        print(f"  VIA-NO-HOLE ... {len(r.vias_without_hole) - 10} more")
+    for b in r.breakouts[:10]:
+        print(f"  BREAKOUT {b['layer']}: plated hole {b['d_mm']} mm at {b['xy_kicad']} only {b['covered']:.0%} covered by copper")
+    if len(r.breakouts) > 10:
+        print(f"  BREAKOUT ... {len(r.breakouts) - 10} more")
     for t in r.ties:
         print(f"  NET-TIE {' + '.join(t['nets'])} joined on purpose by {', '.join(t['net_ties'])}")
     for p in r.no_copper:

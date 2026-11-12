@@ -44,6 +44,19 @@ def test_missing_via_drill_is_open(tmp_path):
     code, r = run(tmp_path, {"no_via_drill"})
     assert code == 1
     assert [o["net"] for o in r["opens"]] == ["B"]
+    assert r["vias_without_hole"] == [{"xy_kicad": [15.0, -14.0], "drill_mm": 0.3}]
+
+
+def test_missing_redundant_via_drill_is_caught(tmp_path):
+    """A stitching via whose loss changes no connectivity (found on a public 6-layer board: one of 279 GND vias):
+    OPEN cannot see it, the via-to-hole check can."""
+    b = make_board(tmp_path)
+    t = b["pcb"].read_text()
+    b["pcb"].write_text(t.replace(' (via (at 15 -14)', ' (via (at 25 -2) (size 0.6) (drill 0.3) (layers "F.Cu" "B.Cu"))\n (via (at 15 -14)'))
+    out = tmp_path / "r.json"
+    code = main(["netcheck", str(b["gerbers"]), "--netlist", str(b["netlist"]), "--pcb", str(b["pcb"]), "--json", str(out)])
+    r = json.loads(out.read_text())
+    assert code == 1 and not r["opens"] and r["vias_without_hole"] == [{"xy_kicad": [25.0, -2.0], "drill_mm": 0.3}]
 
 
 def test_missing_layer_file_is_open(tmp_path):
@@ -222,3 +235,17 @@ def test_pad_without_symbol_pin_alone_is_not_reported(tmp_path):
     out = tmp_path / "r.json"
     assert main(["netcheck", str(b["gerbers"]), "--netlist", str(b["netlist"]), "--pcb", str(b["pcb"]), "--json", str(out)]) == 0
     assert json.loads(out.read_text())["pads_without_pin"] == []
+
+
+def test_shifted_bottom_layer_breaks_holes_out_of_their_pads(tmp_path):
+    """A whole layer shifted 0.5 mm: R2's 1.6 mm pads still touch their 0.8 mm holes, so connectivity there is intact
+    and only BREAKOUT shows it (found by a fault matrix on a public KiCad demo board). The 0.6 mm via pad no longer
+    touches its hole at all, so net B is also OPEN."""
+    code, r = run(tmp_path, {"shift_bottom"})
+    assert code == 1 and not r["shorts"] and [o["net"] for o in r["opens"]] == ["B"]
+    assert {b["layer"] for b in r["breakouts"]} == {"B.Cu"} and len(r["breakouts"]) == 2   # the two R2 holes
+
+
+def test_clean_board_has_no_breakouts(tmp_path):
+    code, r = run(tmp_path)
+    assert code == 0 and r["breakouts"] == []

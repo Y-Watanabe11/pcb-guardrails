@@ -67,8 +67,9 @@ def make_board(root: Path, mutate: frozenset[str] | set[str] = frozenset()) -> d
     (g / "board-F_Cu.gtl").write_text(renumber(_gerber("Copper,L1,Top", top, header, date)))
 
     if "no_bottom" not in mutate:
-        bot = "D12*\n" + _xy(19, 10, 3) + _xy(21, 10, 3) + "D13*\n" + _xy(15, 14, 3)
-        bot += _path([(15, 14), (21, 14), (21, 10)])
+        bs = 0.5 if "shift_bottom" in mutate else 0.0   # the whole bottom layer mis-registered by 0.5 mm in x
+        bot = "D12*\n" + _xy(19 + bs, 10, 3) + _xy(21 + bs, 10, 3) + "D13*\n" + _xy(15 + bs, 14, 3)
+        bot += _path([(15 + bs, 14), (21 + bs, 14), (21 + bs, 10)])
         (g / "board-B_Cu.gbl").write_text(renumber(_gerber("Copper,L2,Bot", bot, date=date)))
 
     edge = _path([(0, 0), (30, 0), (30, 20), (0, 20), (0, 0)], ap="D14")

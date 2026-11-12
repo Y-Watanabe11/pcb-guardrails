@@ -21,7 +21,7 @@ FAIL
 
 | Command | Catches | How |
 |---|---|---|
-| `netcheck` | **OPEN** (a net split into pieces), **SHORT** (two nets on one piece of copper), **NO-COPPER** (a pad with no copper in the files), no-connect pins touching a net | Parses the Gerber copper layers and Excellon drills into geometry, joins copper through plated holes, and compares the resulting pieces with the **schematic** netlist. The CAD tool's connectivity engine is never used. Pad *positions* come from the `.kicad_pcb`; its nets are ignored. |
+| `netcheck` | **OPEN** (a net split into pieces), **SHORT** (two nets on one piece of copper), **NO-COPPER** (a pad with no copper in the files), **BREAKOUT** (a plated hole only partly covered by copper on a layer: a shifted or mis-registered layer), **VIA-NO-HOLE** (a via of the board with no drill hit, e.g. a lost stitching via), no-connect pins touching a net | Parses the Gerber copper layers and Excellon drills into geometry, joins copper through plated holes, and compares the resulting pieces with the **schematic** netlist. The CAD tool's connectivity engine is never used. Pad *positions* come from the `.kicad_pcb`; its nets are ignored. |
 | `fill` | Pours / planes missing from the Gerbers (e.g. zones never filled before plotting — this exports cleanly, with no error) | Copper area per layer relative to the board area; fail below `--min LAYER=RATIO`. |
 | `dfm` | Values below your fab's minimums | Measures trace widths, gaps **between conductors** and **within one conductor**, copper-to-edge, drill sizes, hole-to-hole, hole-to-edge, via and PTH annular rings, silk line widths. Judges only against a rules file **you** fill in (`--rules`). |
 | `freeze` | A frozen file rewritten or changed by a later tool run (a "save" that dropped nets, a regenerated board, a re-export into the upload folder) | `freeze record` stores a SHA-256 and a fingerprint of what each file means; `freeze check` reports SAME / **EQUIVALENT** (bytes differ, geometry or content identical: new UUIDs, dates, aperture numbers, item order) / **CHANGED** / MISSING / NEW. |
@@ -163,8 +163,9 @@ remaining FAIL is either confirmed by KiCad's own DRC / schematic parity or is a
 - v0.3: assembly — JLCPCB BOM/CPL helpers and per-part rotation offsets, 1:1 footprint print templates,
   headless LTspice batch runs.
 
-Related: [FabGate](https://pypi.org/project/fabgate/) (pre-fabrication gate for KiCad projects). pcb-guardrails
-focuses on rebuilding connectivity from the fab files alone and on rules for AI agents.
+Related: [FabGate](https://pypi.org/project/fabgate/) wraps KiCad's DRC and schematic parity in a scored gate and
+checks that a fab package has its files; pcb-guardrails checks what is in those files. See
+[`docs/comparison.md`](docs/comparison.md) for a fault-by-fault comparison.
 
 ## 日本語の概要
 

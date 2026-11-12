@@ -29,6 +29,10 @@ repository; the run used copies in a scratch folder.
 | vme-wren | two no-connect pins KiCad puts on **one** `unconnected-(...)` net (a regulator's PHASE pins) reported as SHORT | pins sharing one unconnected net may share copper; a pin with no net still must sit alone |
 | openair | a footprint pad with no symbol pin (a MOSFET's drain tab) treated as a no-connect pin | pin lists read from the netlist's `<libparts>`; such a pad is a warning naming the net its copper joins (a pad alone is not reported) |
 | tiny_tapeout | `dnp` ignored board-only footprints that the schematic also has | board-only footprints count when the design names them |
+| fault matrix (complex_hierarchy, cm5_minima) | a whole layer shifted 0.5 mm passed: the shift keeps the layer's own connectivity and large through-hole pads still touch their holes | `netcheck` BREAKOUT: a plated hole only partly covered by copper on a layer (castellated holes on the outline excepted) |
+| fault matrix (cm5_minima) | a missing drill hit of one of 279 GND stitching vias passed: connectivity unchanged | `netcheck` VIA-NO-HOLE: every via of the `.kicad_pcb` must have a plated hole in the drill files |
+
+BREAKOUT and VIA-NO-HOLE report nothing on any of the 20 public boards or the two private boards.
 
 ## Drill / Gerber formats (step 3)
 
@@ -44,7 +48,7 @@ repository; the run used copies in a scratch folder.
 
 | Board | Finding | Confirmed by |
 |---|---|---|
-| royalblue54L_feather | `netcheck` OPEN on 30+ nets: all 183 vias are `blind` with `(drill 0.00001)`, which KiCad exports as `T1C0.000`. Nothing would be drilled, so the vias join no layers in the fab files. KiCad's DRC (database) reports 0 unconnected items. | drill file content; `netcheck` now prints the count of plated holes below 0.01 mm |
+| royalblue54L_feather | `netcheck` OPEN on 30+ nets: all 183 vias are `blind` with `(drill 0.00001)`, which KiCad exports as `T1C0.000`. Nothing would be drilled, so the vias join no layers in the fab files. KiCad's DRC flags the drill size ("hole size out of range", blocking) but reports 0 unconnected items: it sees the vias as connections. | drill file content; KiCad DRC hole-size violation; `netcheck` now prints the count of plated holes below 0.01 mm |
 | openair-max | GND OPEN at I2C3 pad 6: the schematic puts the pin on GND, the board leaves the pad unconnected | KiCad parity: `net_conflict` |
 | openair-max | SHORT across F2: the "PCB fuse" footprint draws a copper line from pad to pad without declaring a net tie | footprint content (a trace fuse; intended, but undeclared) |
 | openair-max | Battery1, Solarpower1: DNP in the schematic, fitted on the board | KiCad parity: `footprint_symbol_mismatch` (DNP) |
