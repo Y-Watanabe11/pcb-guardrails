@@ -134,8 +134,9 @@ def cmd_dfm(a) -> int:
             print(f"  VIOLATION {v}")
         print("PASS" if not violations else "FAIL")
     else:
-        print("(measured only; pass --rules <your fab's rules.json> to judge)")
+        print("MEASURED ONLY — not judged (pass --rules <your fab's rules.json> to judge)")
     m["violations"] = violations
+    m["judged"] = bool(a.rules)
     _write_json(a.json, m)
     return FAIL if violations else PASS
 
@@ -147,6 +148,11 @@ def cmd_fill(a) -> int:
         k, v = spec.split("=")
         mins[k] = float(v)
     r = run_fill(files, mins)
+    unknown = sorted(set(mins) - set(r["layers"]))
+    if unknown:   # a typo in a layer name must not turn a requested judgment into a silent pass
+        raise UnsupportedInput(f"--min names layers that are not in the files: {', '.join(unknown)} "
+                               f"(copper layers found: {', '.join(r['layers'])})")
+    r["judged"] = bool(mins)
     print(f"board area {r['board_area_mm2']} mm2")
     for l, i in r["layers"].items():
         need = mins.get(l)
@@ -154,7 +160,8 @@ def cmd_fill(a) -> int:
         print(f"  {l:<7} copper {i['coverage']:.1%}{flag}")
     _write_json(a.json, r)
     if not mins:
-        print("(measured only; pass --min LAYER=RATIO, e.g. --min In1.Cu=0.8, to judge)")
+        print("MEASURED ONLY — not judged (pass --min LAYER=RATIO, e.g. --min In1.Cu=0.8, to judge)")
+        return PASS
     print("PASS" if r["ok"] else "FAIL")
     return PASS if r["ok"] else FAIL
 

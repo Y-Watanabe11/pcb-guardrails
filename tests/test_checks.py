@@ -249,3 +249,28 @@ def test_shifted_bottom_layer_breaks_holes_out_of_their_pads(tmp_path):
 def test_clean_board_has_no_breakouts(tmp_path):
     code, r = run(tmp_path)
     assert code == 0 and r["breakouts"] == []
+
+
+def test_fill_without_limits_is_not_a_pass(tmp_path, capsys):
+    """Nothing was judged, so the output must not say PASS (it once did)."""
+    g = make_plane_board(tmp_path, filled=False)
+    out = tmp_path / "f.json"
+    assert main(["fill", str(g), "--json", str(out)]) == 0
+    text = capsys.readouterr().out
+    assert "MEASURED ONLY — not judged" in text and "PASS" not in text
+    assert json.loads(out.read_text())["judged"] is False
+
+
+def test_fill_limit_on_a_missing_layer_cannot_pass(tmp_path, capsys):
+    """A typo in a layer name ('In1.cu') once made the requested judgment silently disappear."""
+    g = make_plane_board(tmp_path, filled=False)
+    assert main(["fill", str(g), "--min", "In1.cu=0.8"]) == 2
+    assert "not in the files: In1.cu" in capsys.readouterr().err
+
+
+def test_dfm_without_rules_is_not_judged(tmp_path, capsys):
+    b = make_board(tmp_path)
+    out = tmp_path / "d.json"
+    assert main(["dfm", str(b["gerbers"]), "--json", str(out)]) == 0
+    assert "MEASURED ONLY — not judged" in capsys.readouterr().out
+    assert json.loads(out.read_text())["judged"] is False

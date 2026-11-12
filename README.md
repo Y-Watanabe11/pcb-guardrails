@@ -38,7 +38,7 @@ a no-connect pin tied to a net, a clear-polarity cut, an unsupported Gerber feat
 
 | Code | Meaning |
 |---|---|
-| 0 | all checks passed |
+| 0 | all checks passed; for `fill` / `dfm` run without limits, *measured only*: the output says `MEASURED ONLY — not judged` and the JSON has `"judged": false` |
 | 1 | a check failed |
 | 2 | **the input could not be checked** (unsupported Gerber feature, missing file, bad arguments). Never read this as "probably fine". |
 
