@@ -13,14 +13,13 @@ import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import sexpdata
 from shapely.affinity import rotate, translate
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import unary_union
 from shapely.strtree import STRtree
 
 from .gerber import UnsupportedInput
-from .kicad import _S, _kids
+from .kicad import _S, _kids, net_tie_groups, read_sexpr
 
 EPS_AREA = 1e-9   # mm2; copper overlap below this is treated as no contact
 
@@ -177,11 +176,14 @@ def _primitive(g, where: str):
         (x1, y1), (x2, y2) = _xy(_kids(g, "start")[0]), _xy(_kids(g, "end")[0])
         r = box(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2))
         return r.buffer(width / 2, 16) if width > 0 else r
+    if kind == "gr_arc" and _kids(g, "mid"):   # KiCad 7+: start / mid / end
+        pts = _arc3(*(_xy(_kids(g, k)[0]) for k in ("start", "mid", "end")))
+        return LineString(pts).buffer(max(width, 1e-6) / 2, 16)
     raise UnsupportedInput(f"{where}: custom pad primitive {kind!r} is not supported")
 
 
 def load_board(path: str | Path) -> tuple[list[BoardPad], list[Track], list[str]]:
-    tree = sexpdata.loads(Path(path).read_text(encoding="utf-8"))
+    tree = read_sexpr(path)
     net_of = _net_resolver(tree)
     copper = copper_order(tree)
     pads: list[BoardPad] = []
@@ -192,20 +194,21 @@ def load_board(path: str | Path) -> tuple[list[BoardPad], list[Track], list[str]
         at = _kids(fp, "at")[0]
         fx, fy = _num(at[1]), _num(at[2])
         fa = _num(at[3]) if len(at) > 3 else 0.0
-        groups = [frozenset(str(s).split(",")) for t in _kids(fp, "net_tie_pad_groups") for s in t[1:]]
+        groups = net_tie_groups(fp)
         for p in _kids(fp, "pad"):
             number, kind = str(p[1]), _S(p[2])
             if kind == "np_thru_hole":
                 continue
             where = f"{ref}.{number}"
-            for dr in _kids(p, "drill"):
-                for off in _kids(dr, "offset"):
-                    if _num(off[1]) or _num(off[2]):
-                        raise UnsupportedInput(f"{where}: pad with a drill offset is not supported")
+            # a drill offset moves the copper, not the hole: the pad position is the hole and the shape sits at
+            # position + offset in the pad's own (rotated) frame -- checked against KiCad's Gerber output
+            shift = [(_num(off[1]), _num(off[2])) for dr in _kids(p, "drill") for off in _kids(dr, "offset")]
             pa = _kids(p, "at")[0]
             ox, oy = _rot(_num(pa[1]), _num(pa[2]), fa)
             ang = _num(pa[3]) if len(pa) > 3 else 0.0
             local = _local_shape(p, where)
+            if shift and any(shift[0]):
+                local = translate(local, *shift[0])
             # KiCad's angle is counter-clockwise on screen with y down, i.e. clockwise in shapely's y-up sense
             shape = translate(rotate(local, -ang, origin=(0, 0)), fx + ox, fy + oy)
             names = [str(_S(v)) for v in _kids(p, "layers")[0][1:]] if _kids(p, "layers") else []

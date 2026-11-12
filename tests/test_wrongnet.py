@@ -8,6 +8,8 @@ The board is written here so every pad shape and angle is known:
     NT1 (40,10) net tie: pads 1 (A) and 2 (B) touch each other on purpose
     R2  (17,22) round SMD pad, net A
     P1  (50,10) plated through-hole pad, net A
+    O1  (60,10) through-hole pad 2 x 1 with drill offset (0.5, 0): hole at x 60, copper x 59.5..61.5, net A
+    K1  (70,10) custom pad: an arc primitive through (71, 11), net A
 """
 import json
 
@@ -44,6 +46,11 @@ def board(tmp_path, items, numbered=False):
   (pad "1" smd circle (at 0 0) (size 0.5 0.5) (layers "F.Cu") {net("A")}))
  (footprint "T:P" (layer "F.Cu") (at 50 10) (property "Reference" "P1")
   (pad "1" thru_hole circle (at 0 0) (size 1.6 1.6) (drill 0.8) (layers "*.Cu" "*.Mask") {net("A")}))
+ (footprint "T:O" (layer "F.Cu") (at 60 10) (property "Reference" "O1")
+  (pad "1" thru_hole rect (at 0 0) (size 2 1) (drill 0.8 (offset 0.5 0)) (layers "*.Cu" "*.Mask") {net("A")}))
+ (footprint "T:K" (layer "F.Cu") (at 70 10) (property "Reference" "K1")
+  (pad "1" smd custom (at 0 0) (size 0.2 0.2) (layers "F.Cu") {net("A")} (options (clearance outline) (anchor circle))
+   (primitives (gr_arc (start 0 0) (mid 1 1) (end 2 0) (width 0.2)))))
 '''
     body = ""
     for it in items:
@@ -121,3 +128,14 @@ def test_unsupported_pad_cannot_pass(tmp_path, capsys):
     p.write_text(p.read_text().replace("smd circle (at 0 0) (size 0.5 0.5)", "smd blob (at 0 0) (size 0.5 0.5)"))
     assert main(["wrongnet", str(p)]) == 2
     assert "CANNOT CHECK" in capsys.readouterr().err
+
+
+def test_drill_offset_moves_the_copper_not_the_hole(tmp_path):
+    """Checked against KiCad's own Gerber output: the pad position is the hole, the copper sits at position + offset."""
+    assert hits(tmp_path, [("seg", "B", (61.3, 10), (64, 10))]) == [("segment", "B", "O1.1", "end")]
+    assert hits(tmp_path, [("seg", "B", (59.3, 10), (56, 10))]) == []
+
+
+def test_custom_pad_arc_primitive(tmp_path):
+    assert hits(tmp_path, [("seg", "B", (71, 11.05), (71, 14))]) == [("segment", "B", "K1.1", "end")]
+    assert hits(tmp_path, [("seg", "B", (71, 10.2), (71.3, 10.3))]) == []   # inside the arc (radius 1 about (71,10)), not on it

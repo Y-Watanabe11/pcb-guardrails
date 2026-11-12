@@ -20,7 +20,7 @@ from .dnp import run_dnp
 from .fill import run_fill
 from . import freeze as _freeze
 from .gerber import UnsupportedInput, discover
-from .kicad import copper_name, load_footprints, load_netlist, load_pcb, load_schematic
+from .kicad import copper_name, load_footprints, load_net_ties, load_netlist, load_pcb, load_schematic
 from .libcheck import Item, Libraries, Vars, load_tables, run_libcheck
 from .parts import load_parts, natural_key
 from .netcheck import run_netcheck
@@ -57,7 +57,7 @@ def cmd_netcheck(a) -> int:
         raise UnsupportedInput("no drill file found (pass --allow-no-drill for single-layer boards without holes)")
     pads, _ = load_pcb(a.pcb)
     netlist = load_netlist(a.netlist)
-    r = run_netcheck(files, pads, netlist, clearance_report=a.clearance_report)
+    r = run_netcheck(files, pads, netlist, clearance_report=a.clearance_report, net_ties=load_net_ties(a.pcb))
     print(f"pads {r.pads}, schematic nets with pads {r.nets}, copper layers {len(files.copper)}, drill files {len(files.drills)}")
     print(f"OPEN {len(r.opens)} / SHORT {len(r.shorts)} / NO-COPPER {len(r.no_copper)} / "
           f"pads of parts not in the schematic {len(r.not_in_netlist)} / copper islands without pads {len(r.islands)}")
@@ -65,6 +65,14 @@ def cmd_netcheck(a) -> int:
         print(f"  OPEN  {o['net']}: " + " | ".join(", ".join(g) for g in o["groups"]))
     for s in r.shorts:
         print(f"  SHORT {' + '.join(s['nets'])}: {', '.join(s['pads'][:12])}")
+    for w in r.pads_without_pin:
+        print(f"  WARN {w['pad']} has no pin in its symbol but its copper joins {' + '.join(w['joins'])} "
+              "(intended for a thermal tab; check it otherwise)")
+    if r.tiny_holes:
+        print(f"  WARN {len(r.tiny_holes)} plated holes in the drill files are smaller than 0.01 mm (e.g. at "
+              f"{r.tiny_holes[0]['xy_kicad']}): they will not be drilled, so they connect no layers")
+    for t in r.ties:
+        print(f"  NET-TIE {' + '.join(t['nets'])} joined on purpose by {', '.join(t['net_ties'])}")
     for p in r.no_copper:
         print(f"  NO-COPPER {p['pad']} ({p['net']}) at {p['xy_kicad']} on {p['layers']}")
     for l, c in r.clearance.items():
@@ -163,16 +171,16 @@ def cmd_libcheck(a) -> int:
     v = Vars(_vars(a.var), a.kicad_share, project.resolve())
     libs = Libraries(load_tables("symbol", project, a.sym_lib_table or [], a.global_tables, v),
                      load_tables("footprint", project, a.fp_lib_table or [], a.global_tables, v))
-    items, cross = [], []
+    items, cross, cross_warn = [], [], []
     parts = load_parts(a.parts) if a.parts else []
     for pt in parts:
         items.append(Item(pt.ref, pt.symbol, pt.footprint, True, f"{Path(a.parts).name}:{pt.line}"))
     if a.sch:
         by_ref = {}
         for s in load_schematic(a.sch):
-            if s.ref in by_ref and by_ref[s.ref].lib_id != s.lib_id:
-                cross.append({"ref": s.ref, "problem": f"units use different symbols: {by_ref[s.ref].lib_id} / {s.lib_id}",
-                              "source": s.file})
+            if s.ref in by_ref and by_ref[s.ref].lib_id != s.lib_id:   # seen in schematics converted from KiCad 5
+                cross_warn.append({"ref": s.ref, "problem": f"units use different symbols: {by_ref[s.ref].lib_id} / {s.lib_id}",
+                                   "source": s.file})
             by_ref.setdefault(s.ref, s)
         if parts:
             pmap = {pt.ref: pt for pt in parts}
@@ -191,6 +199,7 @@ def cmd_libcheck(a) -> int:
             items += [Item(s.ref, s.lib_id, s.footprint, s.on_board, s.file, False) for s in by_ref.values()]
     r = run_libcheck(items, libs)
     r.fails = cross + r.fails
+    r.warns = cross_warn + r.warns
     print(f"parts {r.items}: symbols found {r.symbols_ok}, footprints found {r.footprints_ok}")
     for f in r.fails:
         print(f"  FAIL {f['ref']}: {f['problem']}")

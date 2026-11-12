@@ -129,19 +129,37 @@ fill it from your fab's current capabilities page, and pass it with `--rules`.
 - Supported Gerber subset: RS-274X with X2 attributes, `%FSLA%`, mm or inch, circular/rect/obround/polygon
   apertures, aperture macros (primitives 1, 4, 5, 20, 21), regions, multi-quadrant arcs, dark and clear
   polarity. Step-and-repeat, image transforms (`%LM/LR/LS%`) and single-quadrant arcs stop with exit 2.
-- Excellon: decimal coordinates, plating from X2 `TA.AperFunction` or the file function; drilled and routed slots.
+- Drill files: Excellon with decimal coordinates, or integer coordinates when the digit format is stated (KiCad's
+  `; FORMAT={3:3/...}` comment or a `METRIC,TZ,000.000` header; leading / trailing zero suppression or kept
+  zeros); drill files written as Gerber X2 (`TF.FileFunction,Plated|NonPlated,...`). Plating comes from X2
+  `TA.AperFunction` or the file function; a mixed file without either (KiCad's "minimal header") stops with exit 2,
+  because plated and non-plated holes cannot be told apart. Plated holes below 0.01 mm join nothing and are
+  reported (KiCad writes a 0.00001 mm via drill as `T1C0.000`).
+- `netcheck`: footprints with `net_tie_pad_groups` (bridged solder jumpers, star-ground ties) join their nets on
+  purpose and are listed as NET-TIE, not SHORT. Pins KiCad's netlist places on one shared `unconnected-(...)` net may
+  share copper; a pin with no net must sit alone. A footprint pad the symbol has no pin for (read from the netlist's
+  `<libparts>`, e.g. a MOSFET drain tab) is a warning naming the net its copper joins, not a FAIL. Copper a footprint draws between its own pads without declaring
+  a net tie (a PCB trace fuse, for example) is a SHORT: the copper is really there.
 - `libcheck`: KiCad-format libraries only (`.kicad_sym` files, `.pretty` folders); symbol libraries stored as a folder
   and other library types stop with exit 2. Units of one symbol share one footprint.
-- `wrongnet`: trapezoid pads are taken as their bounding rectangle (may over-report); pads with a drill offset stop
-  with exit 2. Zones are not checked (use `netcheck` on the Gerbers).
+- `wrongnet`: trapezoid pads are taken as their bounding rectangle and chamfered corners as square (both may
+  over-report, never miss). A drill offset moves the copper, not the hole (checked against KiCad's Gerber output).
+  Zones are not checked (use `netcheck` on the Gerbers).
 - `freeze`: EQUIVALENT ignores UUID values, so a changed symbol ↔ footprint link (`path`) alone is not reported.
   A Gerber change hidden under other copper (a trace end moved inside a pad) is EQUIVALENT, because the copper
   is identical. Files the fingerprint cannot parse fall back to bytes only and are never EQUIVALENT.
 
+## Tested on public boards
+
+The 20 demo projects shipped in KiCad's source tree (`demos/`, from a 4-layer microwave board to a 1500-part VME
+board) were exported with KiCad 10.0.4 on copies and checked, then exported again in every Gerber / drill option
+KiCad offers. See [`docs/public-boards.md`](docs/public-boards.md) for the method and every finding; in short, each
+remaining FAIL is either confirmed by KiCad's own DRC / schematic parity or is a real difference in the fab files.
+
 ## Roadmap
 
 - v0.2 (done): design-freeze fingerprints, library preflight with pin/pad numbers, tracks on wrong-net pads, DNP
-  consistency.
+  consistency; integer Excellon, Gerber drill files, net ties; validated on KiCad's public demo boards.
 - v0.3: assembly — JLCPCB BOM/CPL helpers and per-part rotation offsets, 1:1 footprint print templates,
   headless LTspice batch runs.
 

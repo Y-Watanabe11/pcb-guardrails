@@ -20,10 +20,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import sexpdata
-
 from .gerber import UnsupportedInput
-from .kicad import _S, _kids
+from .kicad import _S, _kids, read_sexpr
 from .parts import natural_key
 
 _VAR = re.compile(r"\$\{([^}]+)\}|\$\(([^)]+)\)")
@@ -77,7 +75,7 @@ class LibTables:
     def add_table(self, path: Path, depth: int = 0) -> None:
         if depth > 8:
             raise UnsupportedInput(f"{path}: library tables nested too deep")
-        tree = sexpdata.loads(path.read_text(encoding="utf-8"))
+        tree = read_sexpr(path)
         for lib in _kids(tree, "lib"):
             d = {str(_S(c[0])): (str(_S(c[1])) if len(c) > 1 else True) for c in lib[1:] if isinstance(c, list) and c}
             nick, typ, uri = d.get("name", ""), d.get("type", ""), d.get("uri", "")
@@ -135,7 +133,7 @@ class Libraries:
                 raise UnsupportedInput(f"{path}: symbol libraries stored as a folder are not supported")
             if not path.is_file():
                 raise LookupError(f"symbol library file {path} does not exist")
-            tree = sexpdata.loads(path.read_text(encoding="utf-8"))
+            tree = read_sexpr(path)
             self._sym_files[path] = {str(s[1]): s for s in _kids(tree, "symbol")}
         return self._sym_files[path]
 
@@ -169,7 +167,7 @@ class Libraries:
         f = d / f"{name}.kicad_mod"
         if not f.is_file():
             raise LookupError(f"footprint {fpid}: no {f.name} in {d}")
-        tree = sexpdata.loads(f.read_text(encoding="utf-8"))
+        tree = read_sexpr(f)
         pads = set()
         for p in _kids(tree, "pad"):
             layers = [str(_S(v)) for lay in _kids(p, "layers") for v in lay[1:]]

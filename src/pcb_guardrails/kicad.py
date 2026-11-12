@@ -36,6 +36,17 @@ class Via:
     drill: float
 
 
+def read_sexpr(path: str | Path, every: bool = False, **kw):
+    """Parse a KiCad S-expression file. Any parse failure becomes UnsupportedInput (exit 2), never a crash:
+    a file this tool cannot read must not count as either good or bad."""
+    from .gerber import UnsupportedInput
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        return sexpdata.parse(text, **kw) if every else sexpdata.loads(text, **kw)
+    except Exception as e:   # sexpdata's errors are not ValueErrors
+        raise UnsupportedInput(f"{path}: not a readable S-expression ({type(e).__name__}: {str(e)[:80].strip()})") from e
+
+
 def _S(v):
     return v.value() if isinstance(v, sexpdata.Symbol) else v
 
@@ -55,7 +66,7 @@ def _reference(fp) -> str:
 
 
 def load_pcb(path: str | Path) -> tuple[list[Pad], list[Via]]:
-    tree = sexpdata.loads(Path(path).read_text())
+    tree = read_sexpr(path)
     pads, vias = [], []
     for fp in _kids(tree, "footprint") + _kids(tree, "module"):
         ref = _reference(fp)
@@ -86,10 +97,22 @@ def load_pcb(path: str | Path) -> tuple[list[Pad], list[Via]]:
     return pads, vias
 
 
+def net_tie_groups(fp) -> list[frozenset[str]]:
+    """Pad-number groups a net-tie footprint joins on purpose: ``(net_tie_pad_groups "1,2" "3,4")``.
+    KiCad writes "1,2" and some libraries "1, 2"."""
+    return [frozenset(n.strip() for n in str(s).split(",") if n.strip()) for t in _kids(fp, "net_tie_pad_groups") for s in t[1:]]
+
+
+def load_net_ties(path: str | Path) -> list[tuple[str, frozenset[str]]]:
+    tree = read_sexpr(path)
+    return [(_reference(fp), g) for fp in _kids(tree, "footprint") + _kids(tree, "module") for g in net_tie_groups(fp)]
+
+
 @dataclass
 class Netlist:
     pins: dict[tuple[str, str], str]   # (ref, pin) -> net
     refs: set[str]                     # every component in the schematic (pins of these with no net are no-connects)
+    symbol_pins: dict[str, set[str]] = None   # ref -> pin numbers of its symbol (from <libparts>), when known
 
 
 def load_netlist(path: str | Path) -> Netlist:
@@ -105,7 +128,16 @@ def load_netlist(path: str | Path) -> Netlist:
             pins[(nd.get("ref"), nd.get("pin"))] = name
     comps = root.find("components")
     refs = {c.get("ref") for c in comps} if comps is not None else set()
-    return Netlist(pins, refs | {r for r, _ in pins})
+    libpins = {}
+    for lp in root.find("libparts") if root.find("libparts") is not None else []:
+        pl = lp.find("pins")
+        libpins[(lp.get("lib"), lp.get("part"))] = {x.get("num") for x in pl} if pl is not None else set()
+    symbol_pins = {}
+    for c in comps if comps is not None else []:
+        ls = c.find("libsource")
+        if ls is not None and (ls.get("lib"), ls.get("part")) in libpins:
+            symbol_pins[c.get("ref")] = libpins[(ls.get("lib"), ls.get("part"))]
+    return Netlist(pins, refs | {r for r, _ in pins}, symbol_pins)
 
 
 def copper_name(layer_no: int, n_layers: int) -> str:
@@ -142,40 +174,70 @@ def _flag(node, key, default: bool) -> bool:
     return len(k[0]) < 2 or str(_S(k[0][1])) == "yes"
 
 
+def _uuid(node) -> str:
+    u = _kids(node, "uuid")
+    return str(u[0][1]) if u else ""
+
+
 def load_schematic(path: str | Path) -> list[SchSymbol]:
-    """Every placed symbol of a schematic and its sub-sheets (each sheet file read once). References come from the
-    symbol's ``instances`` (one per use of a reused sheet), else from its Reference property. Power symbols (marked
-    ``(power)`` in the schematic's symbol cache) and references starting with ``#`` are skipped."""
-    out: list[SchSymbol] = []
-    seen: set[Path] = set()
-    todo = [Path(path)]
-    while todo:
-        f = todo.pop(0)
+    """Every placed symbol of a schematic hierarchy, one entry per use: a sheet used twice yields its symbols twice,
+    each with the reference of that use.
+
+    The hierarchy is walked from the root sheet, so each use has a path (``/<root uuid>/<sheet uuid>/...``) and a
+    symbol takes the reference recorded for that path (KiCad 7+: the symbol's ``instances``; KiCad 6: the root's
+    ``symbol_instances``). A symbol with no instance records at all (older files, hand-written test files) uses
+    its Reference property; one whose records are all for other paths (left over from a copied or removed sheet)
+    is not part of this design and is skipped, as KiCad does. Power symbols (``(power)`` in the symbol cache) and
+    references starting with ``#`` are skipped."""
+    root = Path(path)
+    trees: dict[Path, list] = {}
+
+    def tree_of(f: Path):
         rf = f.resolve()
-        if rf in seen:
-            continue
-        seen.add(rf)
-        if not f.is_file():
-            raise FileNotFoundError(f"schematic sheet {f} not found")
-        tree = sexpdata.loads(f.read_text(encoding="utf-8"))
+        if rf not in trees:
+            if not f.is_file():
+                raise FileNotFoundError(f"schematic sheet {f} not found")
+            trees[rf] = read_sexpr(f)
+        return trees[rf]
+
+    top = tree_of(root)
+    root_uuid = _uuid(top)
+    v6 = {}   # KiCad 6: "/<sheet uuids>/<symbol uuid>" -> reference
+    for si in _kids(top, "symbol_instances"):
+        for pth in _kids(si, "path"):
+            for r in _kids(pth, "reference"):
+                v6[str(pth[1])] = str(r[1])
+
+    out: list[SchSymbol] = []
+    stack = [(root, "", 0)]      # (file, path of sheet uuids below the root, depth)
+    while stack:
+        f, sheet_path, depth = stack.pop()
+        if depth > 32:
+            raise ValueError(f"{f}: schematic hierarchy deeper than 32 sheets (a sheet that includes itself?)")
+        tree = tree_of(f)
         power = {str(ls[1]) for cache in _kids(tree, "lib_symbols") for ls in _kids(cache, "symbol") if _kids(ls, "power")}
+        here = {f"/{root_uuid}{sheet_path}", sheet_path or "/"}
         for sym in _kids(tree, "symbol"):
             lib = _kids(sym, "lib_id")
             if not lib or str(lib[0][1]) in power:   # power symbols and PWR_FLAG are not parts, whatever their reference
                 continue
-            refs = [str(r[1]) for inst in _kids(sym, "instances") for proj in _kids(inst, "project")
-                    for pth in _kids(proj, "path") for r in _kids(pth, "reference")]
-            if not refs:
-                refs = [_prop(sym, "Reference") or "?"]
-            for ref in dict.fromkeys(refs):
-                if ref.startswith("#"):
+            records = [(str(pth[1]), str(r[1])) for inst in _kids(sym, "instances") for proj in _kids(inst, "project")
+                       for pth in _kids(proj, "path") for r in _kids(pth, "reference")]
+            ref = next((r for pth, r in records if pth in here), None)
+            if ref is None and v6:
+                ref = v6.get(f"{sheet_path}/{_uuid(sym)}")
+            if ref is None:
+                if records or v6:
                     continue
-                out.append(SchSymbol(ref, str(lib[0][1]), _prop(sym, "Footprint") or "", _flag(sym, "dnp", False),
-                                     _flag(sym, "on_board", True), f.name))
-        for sh in _kids(tree, "sheet"):
+                ref = _prop(sym, "Reference") or "?"
+            if ref.startswith("#"):
+                continue
+            out.append(SchSymbol(ref, str(lib[0][1]), _prop(sym, "Footprint") or "", _flag(sym, "dnp", False),
+                                 _flag(sym, "on_board", True), f.name))
+        for sh in reversed(_kids(tree, "sheet")):
             name = _prop(sh, "Sheetfile") or _prop(sh, "Sheet file")
             if name:
-                todo.append(f.parent / name)
+                stack.append((f.parent / name, f"{sheet_path}/{_uuid(sh)}", depth + 1))
     return out
 
 
@@ -195,7 +257,7 @@ class PcbFootprint:
 
 
 def load_footprints(path: str | Path) -> list[PcbFootprint]:
-    tree = sexpdata.loads(Path(path).read_text(encoding="utf-8"))
+    tree = read_sexpr(path)
     out = []
     for fp in _kids(tree, "footprint") + _kids(tree, "module"):
         attrs = tuple(str(_S(a)) for at in _kids(fp, "attr") for a in at[1:] if not isinstance(a, list))

@@ -54,8 +54,9 @@ def run_dnp(parts: list[Part] | None, sch: list[SchSymbol] | None, pcb: list[Pcb
             if not s.on_board:
                 off_board.add(s.ref)
         sources["schematic"] = m
-    if pcb is not None:
-        sources["board"] = {f.ref: f.dnp for f in pcb if not f.board_only}
+    if pcb is not None:   # board-only footprints (mounting holes, logos) count only if the design names them
+        design_refs = set().union(*sources.values()) if sources else set()
+        sources["board"] = {f.ref: f.dnp for f in pcb if not f.board_only or f.ref in design_refs}
     if len(sources) < 2 and not exclusive:
         raise UnsupportedInput("give at least two of --parts / --sch / --pcb (or --exclusive groups) to compare")
 

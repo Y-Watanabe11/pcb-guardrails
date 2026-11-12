@@ -194,13 +194,13 @@ def make_project(root: Path) -> dict[str, Path]:
         return (f' (symbol (lib_id "{lib_id}") (at 0 0 0) (unit 1) (in_bom yes) (on_board yes) (dnp {dnp}) (uuid "{_u(ref)}")\n'
                 f'  (property "Reference" "{ref}" (at 0 0 0)) (property "Footprint" "{fp}" (at 0 0 0)){extra})\n')
     (proj / "board.kicad_sch").write_text(
-        '(kicad_sch (version 20250114) (generator "test")\n'
+        '(kicad_sch (version 20250114) (generator "test") (uuid "r00t")\n'
         ' (lib_symbols (symbol "power:GND" (power) (pin_names (offset 0))) (symbol "Lib:R" (property "Reference" "R")))\n'
         + sym("Lib:R", "R1", "Fp:R_SMD") + sym("Lib:RX", "R2", "Fp:R_SMD", "yes") + sym("Nested:C", "C1", "Fp:R_SMD")
         + ' (symbol (lib_id "power:GND") (at 0 0 0) (unit 1) (property "Reference" "PWR01") (property "Footprint" ""))\n'
-        ' (sheet (at 0 0) (size 10 10) (property "Sheetname" "ch") (property "Sheetfile" "channel.kicad_sch"))\n'
-        ' (sheet (at 20 0) (size 10 10) (property "Sheetname" "ch2") (property "Sheetfile" "channel.kicad_sch")))\n')
-    inst = ' (instances (project "board" (path "/a/b" (reference "U1") (unit 1)) (path "/a/c" (reference "U2") (unit 1))))'
+        ' (sheet (at 0 0) (size 10 10) (property "Sheetname" "ch") (property "Sheetfile" "channel.kicad_sch") (uuid "s1"))\n'
+        ' (sheet (at 20 0) (size 10 10) (property "Sheetname" "ch2") (property "Sheetfile" "channel.kicad_sch") (uuid "s2")))\n')
+    inst = ' (instances (project "board" (path "/r00t/s1" (reference "U1") (unit 1)) (path "/r00t/s2" (reference "U2") (unit 1))))'
     (proj / "channel.kicad_sch").write_text('(kicad_sch (version 20250114) (generator "test")\n'
                                            + sym("Lib:U3", "U?", "Fp:SOT3", extra=inst) + ")\n")
 

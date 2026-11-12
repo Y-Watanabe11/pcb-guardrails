@@ -99,3 +99,23 @@ def test_schematic_compared_with_parts_list(p):
     assert ("R9", "in the parts list but not in the schematic") in probs
     assert ("U2", "in the schematic but not in the parts list") in probs
     assert ("C1", "Nested:C pins ['2'] have no pad in Fp:ONE") in probs   # the parts list itself is checked too
+
+
+def test_reused_sheet_takes_the_reference_of_each_use(p):
+    """A sheet used twice gives each use its own reference; instance records for paths that are not in this
+    hierarchy (a removed sheet, another project) are ignored, as KiCad does."""
+    from pcb_guardrails.kicad import load_schematic
+    ch = p["proj"] / "channel.kicad_sch"
+    t = ch.read_text()
+    old = '(path "/r00t/s2" (reference "U2") (unit 1))'
+    assert old in t
+    ch.write_text(t.replace(old, old + ' (path "/r00t/gone" (reference "U9") (unit 1))) (project "other" (path "/x/y" (reference "U7") (unit 1))'))
+    assert sorted(s.ref for s in load_schematic(p["sch"])) == ["C1", "R1", "R2", "U1", "U2"]
+
+
+def test_unreadable_library_file_cannot_check(p, capsys):
+    """A footprint file with an extra bracket (seen in a public project library) once crashed the tool."""
+    f = p["proj"] / "lib" / "Test.pretty" / "R_SMD.kicad_mod"
+    f.write_text(f.read_text() + ")\n")
+    assert run(p)[0] == 2
+    assert "not a readable S-expression" in capsys.readouterr().err
