@@ -11,7 +11,7 @@ at **the deliverable**, rebuilds it from scratch, and compares it with the schem
 ```
 $ pcb-guardrails netcheck fab/gerbers --netlist board.net.xml --pcb board.kicad_pcb
 pads 412, schematic nets with pads 68, copper layers 4, drill files 1
-OPEN 0 / SHORT 1 / NO-COPPER 0 / pads of parts not in the schematic 0 / copper islands without pads 0
+OPEN 0 / SHORT 1 / NO-COPPER 0 / BREAKOUT 0 / VIA-NO-HOLE 0 / pads of parts not in the schematic 0 / copper islands without pads 0
   SHORT +3V3 + SPI_CLK: C12.1, R7.2, U3.5
   F.Cu: smallest gap between different copper 0.15 mm (GND / +3V3) at [41.2, 33.85]
 FAIL
@@ -221,8 +221,12 @@ remaining FAIL is either confirmed by KiCad's own DRC / schematic parity or is a
 
 ## Roadmap
 
-- v0.2 (done): design-freeze fingerprints, library preflight with pin/pad numbers, tracks on wrong-net pads, DNP
-  consistency; integer Excellon, Gerber drill files, net ties; validated on KiCad's public demo boards.
+- v0.2 (done, see [`CHANGELOG.md`](CHANGELOG.md)): design-freeze fingerprints, library preflight with pin/pad
+  numbers, tracks on wrong-net pads, DNP consistency; BREAKOUT and VIA-NO-HOLE; reports for AI agents; IPC-D-356
+  for other CAD tools; the board edge as the outline's centre line; nothing unjudged is ever a pass; validated on
+  KiCad's public demo boards.
+- Next: IPC-D-356 files from other CAD tools (only KiCad's have been tried); `--format agent` for every command;
+  speed on large boards (minutes for 5000+ pads).
 - v0.3: assembly — JLCPCB BOM/CPL helpers and per-part rotation offsets, 1:1 footprint print templates,
   headless LTspice batch runs.
 
@@ -236,6 +240,12 @@ checks that a fab package has its files; pcb-guardrails checks what is in those 
 ツールです。CAD の中の検査（DRC・ERC）では見えない、書き出しの段階の間違い（塗っていないベタ、抜けた層、
 回路図とずれた PCB、消えたビアの穴）を捕まえます。AI エージェントが基板を設計するときの安全柵として、
 エージェント向けの規則（`AGENTS.md`）と Claude Code のスキルも同梱しています。
+
+- 終了コードは 0 = 合格、1 = 不合格、2 = 確認できなかった（合格ではない）。判定していないものを合格とは表示しません。
+- 回路図との照合は KiCad（XML ネットリストと `.kicad_pcb`）。他の CAD は IPC-D-356 ネットリスト（基板側のネット）で照合できます。
+- ほかに、ベタの抜け（`fill`）、ファブの規則値との比較と基板外の銅（`dfm`）、凍結したファイルの書き換え（`freeze`）、
+  別ネットのパッドに触れる配線（`wrongnet`）、ライブラリの実在とピン番号（`libcheck`）、DNP の食い違い（`dnp`）。
+- `netcheck --format agent` は AI エージェントが読んで動けるように、判定・証拠・原因の候補・次の手順を順に出力します。
 
 ## License
 
