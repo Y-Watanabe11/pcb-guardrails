@@ -64,6 +64,36 @@ pcb-guardrails fill     fab/gerbers --min In1.Cu=0.8          # a solid inner gr
 pcb-guardrails dfm      fab/gerbers --pcb board.kicad_pcb --rules my_fab_rules.json
 ```
 
+### Other CAD tools: IPC-D-356
+
+Any CAD tool that exports an IPC-D-356 netlist (the test netlist fabs use for electrical test) can be checked:
+
+```bash
+pcb-guardrails netcheck fab/gerbers --ipc356 board.ipc    # instead of --netlist and --pcb
+```
+
+- The nets are **the board's**, as exported with the layout, not the schematic's. A board that drifted away from
+  its schematic is not caught in this mode; the KiCad mode compares with the schematic.
+- The IPC file's origin often differs from the Gerbers' (KiCad writes it relative to the drill / place origin).
+  The offset is found by putting the IPC file's plated holes onto the drill hits: at least 90 % must land, and no
+  other offset may come within 10 points. Otherwise it is exit 2; give the offset with `--ipc356-offset DX,DY`
+  (mm). The offset used is printed.
+- Read: records 317 (through-hole pad, via), 327 (surface pad, top `A01` or bottom), 367 (non-plated hole,
+  ignored), `N/C` pads (must sit alone on their copper), `UNITS CUST 0`. Anything else (other units, blind /
+  buried via records 307 / 027, conductor records) is exit 2.
+- The format comes from two exporters and their output (KiCad's `export_d356.cpp` and KiCad 10.0.4 files, the
+  EAGLE `ipc-d-356.ulp`), not from the IPC standard, which is sold by IPC. The fields after column 32 are read by
+  their letters because the exporters place them in different columns; the drill size is not used because they
+  write it in different units.
+- Net names are limited to 14 characters and references to 6. Nets whose names fill the field are reported as
+  possibly cut short (two different nets cut to one name are read as one net); pads whose cut reference and pin
+  repeat with different nets are kept apart as `REF#n`.
+- Pass `--pcb` as well for a KiCad board to honour net ties; without it a net-tie footprint shows as SHORT.
+- The IPC file says nothing about symbol pins. A footprint pad with no symbol pin (a MOSFET's drain tab) carries an
+  unconnected net of its own and shows as SHORT with the copper it joins; the KiCad mode reads the symbol's pins and
+  makes it a warning. A pad number one part repeats with a different net on each copy (KiCad does this for an
+  unconnected thermal pad and its vias), joined by the footprint's copper, is a warning, not a SHORT.
+
 ### Before and after generating a schematic / board
 
 ```bash
@@ -155,7 +185,8 @@ report. The JSON output (`--json`) carries the same facts for programs.
 
 ## Limitations
 
-- KiCad only for pad positions and the netlist format (Gerber/drill parsing itself is CAD-neutral).
+- `netcheck` against the schematic needs KiCad (XML netlist and `.kicad_pcb`); other CAD tools are checked against
+  the board's nets through IPC-D-356. `fill`, `dfm` and `freeze` read Gerber / drill files from any tool.
 - Does not check what a pin *means* (`libcheck` compares pin and pad numbers only), footprint geometry against a datasheet, impedance,
   current capacity, creepage/clearance for high voltage, or anything electrical beyond connectivity.
 - Supported Gerber subset: RS-274X with X2 attributes, `%FSLA%`, mm or inch, circular/rect/obround/polygon

@@ -23,7 +23,7 @@ from .gerber import UnsupportedInput, discover
 from .kicad import copper_name, load_footprints, load_net_ties, load_netlist, load_pcb, load_schematic
 from .libcheck import Item, Libraries, Vars, load_tables, run_libcheck
 from .parts import load_parts, natural_key
-from .agent_report import render_cannot, render_netcheck
+from .agent_report import name, render_cannot, render_netcheck
 from .netcheck import run_netcheck
 from .wrongnet import run_wrongnet
 
@@ -56,13 +56,32 @@ def cmd_netcheck(a) -> int:
         raise UnsupportedInput("no copper layers found")
     if not files.drills and not a.allow_no_drill:
         raise UnsupportedInput("no drill file found (pass --allow-no-drill for single-layer boards without holes)")
-    pads, vias = load_pcb(a.pcb)
-    netlist = load_netlist(a.netlist)
-    r = run_netcheck(files, pads, netlist, clearance_report=a.clearance_report, net_ties=load_net_ties(a.pcb), vias=vias)
-    if a.format == "agent":
-        print(render_netcheck(r, files), end="")
+    source = []
+    if a.ipc356:
+        if a.netlist:
+            raise UnsupportedInput("give either --ipc356 or --netlist, not both")
+        pads, vias, netlist, source, origin = _from_ipc356(a, files)
+        ties = [(ref[:6], pins) for ref, pins in load_net_ties(a.pcb)] if a.pcb else []
+        if not a.pcb:
+            source.append("net ties not known (pass --pcb to read them from the board): a bridged solder jumper "
+                          "or net-tie footprint shows as SHORT")
     else:
-        _print_netcheck_text(r, files)
+        if not (a.netlist and a.pcb):
+            raise UnsupportedInput("netcheck needs --netlist and --pcb (KiCad), or --ipc356 (any CAD tool)")
+        pads, vias = load_pcb(a.pcb)
+        netlist = load_netlist(a.netlist)
+        ties = load_net_ties(a.pcb)
+    r = run_netcheck(files, pads, netlist, clearance_report=a.clearance_report, net_ties=ties, vias=vias)
+    if a.ipc356:
+        from .ipc356 import same_pad_shorts
+        r.shorts, warn = same_pad_shorts(r.shorts, origin)
+        source += [f"WARN {w}" for w in warn]
+    if a.format == "agent":
+        print(render_netcheck(r, files, source), end="")
+    else:
+        for line in source:
+            print(line if line.startswith("WARN ") else f"NOTE {line}")
+        _print_netcheck_text(r, files, "board nets (IPC-D-356)" if a.ipc356 else "schematic nets")
     if a.net_csv:
         with open(a.net_csv, "w", newline="", encoding="utf-8") as fo:
             w = csv.writer(fo)
@@ -75,8 +94,32 @@ def cmd_netcheck(a) -> int:
     return PASS if r.ok else FAIL
 
 
-def _print_netcheck_text(r, files) -> None:
-    print(f"pads {r.pads}, schematic nets with pads {r.nets}, copper layers {len(files.copper)}, drill files {len(files.drills)}")
+def _from_ipc356(a, files):
+    """Pads, vias and nets from an IPC-D-356 file, placed in the Gerber frame."""
+    from .gerber import parse_drill
+    from .ipc356 import align, read_ipc356, to_netcheck
+    d = read_ipc356(a.ipc356)
+    if a.ipc356_offset:
+        try:
+            dx, dy = (float(v) for v in a.ipc356_offset.split(","))
+        except ValueError:
+            raise UnsupportedInput(f"--ipc356-offset {a.ipc356_offset!r}: expected DX,DY in mm") from None
+        offset, how = (dx, dy), "given with --ipc356-offset"
+    else:
+        # the centre of each hole: a slot's xy is where the router starts, not its middle
+        hits = [h.xy if h.geom.is_empty else (h.geom.centroid.x, h.geom.centroid.y)
+                for p in files.drills for h in parse_drill(p) if h.plated]
+        offset, n, total = align(d, hits)
+        how = f"found from the drill files: {n} of {total} plated holes of the IPC-D-356 on a drill hit"
+    pads, vias, netlist, notes, origin = to_netcheck(d, offset, len(files.copper))
+    source = [f"nets from IPC-D-356 {name(d.path.name)}: the board's nets as exported, not the schematic's, so a board "
+              "that drifted from its schematic is not caught",
+              f"IPC-D-356 positions shifted by ({offset[0]:.3f}, {offset[1]:.3f}) mm, {how}"] + notes
+    return pads, vias, netlist, source, origin
+
+
+def _print_netcheck_text(r, files, nets_label="schematic nets") -> None:
+    print(f"pads {r.pads}, {nets_label} with pads {r.nets}, copper layers {len(files.copper)}, drill files {len(files.drills)}")
     print(f"OPEN {len(r.opens)} / SHORT {len(r.shorts)} / NO-COPPER {len(r.no_copper)} / BREAKOUT {len(r.breakouts)} / VIA-NO-HOLE {len(r.vias_without_hole)} / "
           f"pads of parts not in the schematic {len(r.not_in_netlist)} / copper islands without pads {len(r.islands)}")
     for o in r.opens:
@@ -90,7 +133,8 @@ def _print_netcheck_text(r, files) -> None:
         print(f"  WARN {len(r.tiny_holes)} plated holes in the drill files are smaller than 0.01 mm (e.g. at "
               f"{r.tiny_holes[0]['xy_kicad']}): they will not be drilled, so they connect no layers")
     for v in r.vias_without_hole[:10]:
-        print(f"  VIA-NO-HOLE via ({v['drill_mm']} mm drill) at {v['xy_kicad']} in the .kicad_pcb has no plated hole in the drill files")
+        size = "" if v["drill_mm"] is None else f" ({v['drill_mm']} mm drill)"
+        print(f"  VIA-NO-HOLE via{size} at {v['xy_kicad']} in the board data has no plated hole in the drill files")
     if len(r.vias_without_hole) > 10:
         print(f"  VIA-NO-HOLE ... {len(r.vias_without_hole) - 10} more")
     for b in r.breakouts[:10]:
@@ -328,8 +372,12 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("netcheck", help="Gerber + drill connectivity vs. the schematic netlist (OPEN / SHORT)")
     p.add_argument("gerbers", help="folder with the Gerber and drill files you upload to the fab")
-    p.add_argument("--netlist", required=True, help="KiCad XML netlist: kicad-cli sch export netlist --format kicadxml")
-    p.add_argument("--pcb", required=True, help=".kicad_pcb (pad positions only; its nets are not used)")
+    p.add_argument("--netlist", help="KiCad XML netlist: kicad-cli sch export netlist --format kicadxml")
+    p.add_argument("--pcb", help=".kicad_pcb (pad positions only; its nets are not used). With --ipc356: net ties only")
+    p.add_argument("--ipc356", help="IPC-D-356 netlist from any CAD tool, instead of --netlist and --pcb "
+                                    "(the board's nets, not the schematic's)")
+    p.add_argument("--ipc356-offset", help="DX,DY mm added to IPC-D-356 positions to reach the Gerber frame "
+                                           "(default: found from the drill files)")
     p.add_argument("--json", help="write the full result as JSON")
     p.add_argument("--net-csv", help="write one row per net")
     p.add_argument("--clearance-report", type=float, default=0.2, help="report copper gaps below this (mm), default 0.2")
