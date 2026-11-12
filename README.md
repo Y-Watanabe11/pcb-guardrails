@@ -113,6 +113,12 @@ No fab rules are built in. Capabilities change and depend on layer count, copper
 a wrong number baked into a checker is worse than none. Copy [`examples/rules.example.json`](examples/rules.example.json),
 fill it from your fab's current capabilities page, and pass it with `--rules`.
 
+Every non-null rule must be judged. A rule that cannot be (an unknown rule name, an edge rule without an outline
+file, a drill rule without a drill file, a ring rule without `--pcb`, a silk rule without silkscreen files), or a file
+whose rules are all null, is reported as NOT JUDGED and `dfm` exits 2 unless a violation already made it FAIL; set a
+rule to null if it does not apply. Copper gaps are searched up to the largest spacing rule automatically, so a gap
+just below your minimum cannot fall outside the search.
+
 ## For AI agents
 
 `netcheck --format agent` prints a report written for a language model: the verdict and exit code first, what was

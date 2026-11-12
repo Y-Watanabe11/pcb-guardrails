@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .dfm import apply_rules, run_dfm
+from .dfm import SPACING_KEYS, active_rules, apply_rules, run_dfm, unjudgeable
 from .dnp import run_dnp
 from .fill import run_fill
 from . import freeze as _freeze
@@ -109,8 +109,15 @@ def _print_netcheck_text(r, files) -> None:
 
 def cmd_dfm(a) -> int:
     files = discover(a.gerbers)
+    if not files.copper:
+        raise UnsupportedInput("no copper layers found")
+    rules = json.loads(Path(a.rules).read_text()) if a.rules else None
+    window = a.gap_window
+    if rules:   # gaps are only searched up to the window: it must reach past the largest spacing rule
+        window = max([window] + [float(rules[k]) + 0.05 for k in SPACING_KEYS if rules.get(k) is not None])
     pads, vias = load_pcb(a.pcb) if a.pcb else (None, None)
-    m = run_dfm(files, pads, vias, gap_window=a.gap_window)
+    m = run_dfm(files, pads, vias, gap_window=window)
+    m["gap_window_mm"] = window
     for l, info in m["layers"].items():
         print(f"  {l}: trace min {info['min_trace_width_mm']} mm, gap between conductors {info['min_gap_between_conductors_mm']} mm "
               f"at {info['min_gap_between_conductors_at_kicad']}, within a conductor {info['min_gap_within_conductor_mm']} mm"
@@ -126,19 +133,30 @@ def cmd_dfm(a) -> int:
     for side, s in m["silk"].items():
         w = s["min_line_width_mm"]
         print(f"  silk {side}: min line {w} mm" if w is not None else f"  silk {side}: no stroked lines (flashes/regions only)")
-    violations = []
-    if a.rules:
-        rules = json.loads(Path(a.rules).read_text())
+    violations, not_judged = [], []
+    if rules is not None:
         violations = apply_rules(m, rules)
+        not_judged = unjudgeable(rules, files, bool(a.pcb))
         for v in violations:
             print(f"  VIOLATION {v}")
-        print("PASS" if not violations else "FAIL")
-    else:
-        print("MEASURED ONLY — not judged (pass --rules <your fab's rules.json> to judge)")
-    m["violations"] = violations
-    m["judged"] = bool(a.rules)
+        for nj in not_judged:
+            print(f"  NOT JUDGED {nj['rule']}: {nj['reason']}")
+        if not active_rules(rules):
+            not_judged.append({"rule": "(all)", "reason": "every rule in the file is null"})
+            print("  NOT JUDGED: every rule in the file is null")
+    m["violations"], m["not_judged"], m["judged"] = violations, not_judged, rules is not None
     _write_json(a.json, m)
-    return FAIL if violations else PASS
+    if rules is None:
+        print("MEASURED ONLY — not judged (pass --rules <your fab's rules.json> to judge)")
+        return PASS
+    if violations:
+        print("FAIL")
+        return FAIL
+    if not_judged:
+        print("CANNOT CHECK: some requested rules could not be judged (listed above)")
+        return CANNOT
+    print("PASS")
+    return PASS
 
 
 def cmd_fill(a) -> int:

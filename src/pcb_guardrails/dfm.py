@@ -144,6 +144,38 @@ def run_dfm(files: FabFiles, pads: list[Pad] | None = None, vias: list[Via] | No
 
 
 # ----------------------------------------------------------------------------- rules
+RULE_KEYS = {"min_trace_width_mm", "min_spacing_mm", "min_spacing_same_net_mm", "min_copper_to_edge_mm", "min_drill_mm",
+             "min_hole_to_hole_mm", "min_hole_to_edge_mm", "min_via_annular_ring_mm", "min_pth_annular_ring_mm",
+             "min_silk_line_mm"}
+SPACING_KEYS = ("min_spacing_mm", "min_spacing_same_net_mm")
+
+
+def active_rules(rules: dict) -> dict:
+    """The rules that ask for a judgment: non-null values of non-comment keys."""
+    return {k: v for k, v in rules.items() if not k.startswith("_") and v is not None}
+
+
+def unjudgeable(rules: dict, files: FabFiles, have_pcb: bool) -> list[dict]:
+    """Requested rules that cannot be judged with the inputs given. Skipping them silently would turn a requested
+    judgment into a pass, so each is reported (and the check exits 2 unless it already failed)."""
+    out = []
+    for k in sorted(active_rules(rules)):
+        need = None
+        if k not in RULE_KEYS:
+            need = f"unknown rule name (known: {', '.join(sorted(RULE_KEYS))})"
+        elif k in ("min_copper_to_edge_mm", "min_hole_to_edge_mm") and not files.profile:
+            need = "no board outline (Profile / Edge_Cuts) file"
+        elif k in ("min_drill_mm", "min_hole_to_hole_mm", "min_hole_to_edge_mm") and not files.drills:
+            need = "no drill file"
+        elif k in ("min_via_annular_ring_mm", "min_pth_annular_ring_mm") and not have_pcb:
+            need = "needs --pcb (via and pad sizes come from the board file)"
+        elif k == "min_silk_line_mm" and not files.legend:
+            need = "no silkscreen (Legend) file; set the rule to null if the board has none"
+        if need:
+            out.append({"rule": k, "reason": need})
+    return out
+
+
 def apply_rules(m: dict, rules: dict) -> list[dict]:
     """Compare measurements with user-supplied minimums. Returns a list of violations."""
     v = []
