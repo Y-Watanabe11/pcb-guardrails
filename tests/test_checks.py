@@ -249,3 +249,71 @@ def test_shifted_bottom_layer_breaks_holes_out_of_their_pads(tmp_path):
 def test_clean_board_has_no_breakouts(tmp_path):
     code, r = run(tmp_path)
     assert code == 0 and r["breakouts"] == []
+
+
+def test_fill_without_limits_is_not_a_pass(tmp_path, capsys):
+    """Nothing was judged, so the output must not say PASS (it once did)."""
+    g = make_plane_board(tmp_path, filled=False)
+    out = tmp_path / "f.json"
+    assert main(["fill", str(g), "--json", str(out)]) == 0
+    text = capsys.readouterr().out
+    assert "MEASURED ONLY — not judged" in text and "PASS" not in text
+    assert json.loads(out.read_text())["judged"] is False
+
+
+def test_fill_limit_on_a_missing_layer_cannot_pass(tmp_path, capsys):
+    """A typo in a layer name ('In1.cu') once made the requested judgment silently disappear."""
+    g = make_plane_board(tmp_path, filled=False)
+    assert main(["fill", str(g), "--min", "In1.cu=0.8"]) == 2
+    assert "not in the files: In1.cu" in capsys.readouterr().err
+
+
+def test_dfm_without_rules_is_not_judged(tmp_path, capsys):
+    b = make_board(tmp_path)
+    out = tmp_path / "d.json"
+    assert main(["dfm", str(b["gerbers"]), "--json", str(out)]) == 0
+    assert "MEASURED ONLY — not judged" in capsys.readouterr().out
+    assert json.loads(out.read_text())["judged"] is False
+
+
+def _dfm(tmp_path, rules, *extra, pcb=True):
+    b = make_board(tmp_path)
+    rf = tmp_path / "rules.json"
+    rf.write_text(json.dumps(rules))
+    out = tmp_path / "d.json"
+    args = ["dfm", str(b["gerbers"]), "--rules", str(rf), "--json", str(out), *extra] + (["--pcb", str(b["pcb"])] if pcb else [])
+    code = main(args)
+    return code, (json.loads(out.read_text()) if out.exists() else None)
+
+
+def test_dfm_on_a_folder_without_copper_cannot_pass(tmp_path, capsys):
+    """An empty upload folder once printed PASS with a rules file."""
+    (tmp_path / "empty").mkdir()
+    rf = tmp_path / "rules.json"
+    rf.write_text('{"min_trace_width_mm": 0.1}')
+    assert main(["dfm", str(tmp_path / "empty"), "--rules", str(rf)]) == 2
+    assert "no copper layers" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("rules, pcb, reason", [
+    ({"min_spacing": 0.1}, True, "unknown rule name"),                        # a typo: once silently ignored
+    ({"min_via_annular_ring_mm": 0.1}, False, "needs --pcb"),
+    ({"min_silk_line_mm": 0.1}, True, "no silkscreen"),                      # the synthetic board has no silk file
+    ({"min_trace_width_mm": None, "_source": "x"}, True, "every rule in the file is null"),
+])
+def test_dfm_rules_that_cannot_be_judged(tmp_path, rules, pcb, reason):
+    code, m = _dfm(tmp_path, rules, pcb=pcb)
+    assert code == 2 and any(reason in nj["reason"] for nj in m["not_judged"])
+
+
+def test_dfm_violation_wins_over_not_judged(tmp_path):
+    code, m = _dfm(tmp_path, {"min_via_annular_ring_mm": 0.2, "min_silk_line_mm": 0.1})
+    assert code == 1 and m["violations"] and m["not_judged"]
+
+
+def test_dfm_gap_window_reaches_past_the_spacing_rule(tmp_path):
+    """Gaps are searched only up to the window: with a 0.3 mm window the 0.4 mm gap between R2's pads was never seen,
+    and a 0.5 mm spacing rule passed. The window now grows to cover the rule."""
+    code, m = _dfm(tmp_path, {"min_spacing_mm": 0.5}, "--gap-window", "0.3")
+    assert code == 1 and m["gap_window_mm"] == pytest.approx(0.55)
+    assert m["layers"]["F.Cu"]["min_gap_between_conductors_mm"] == pytest.approx(0.4)

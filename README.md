@@ -23,7 +23,7 @@ FAIL
 |---|---|---|
 | `netcheck` | **OPEN** (a net split into pieces), **SHORT** (two nets on one piece of copper), **NO-COPPER** (a pad with no copper in the files), **BREAKOUT** (a plated hole only partly covered by copper on a layer: a shifted or mis-registered layer), **VIA-NO-HOLE** (a via of the board with no drill hit, e.g. a lost stitching via), no-connect pins touching a net | Parses the Gerber copper layers and Excellon drills into geometry, joins copper through plated holes, and compares the resulting pieces with the **schematic** netlist. The CAD tool's connectivity engine is never used. Pad *positions* come from the `.kicad_pcb`; its nets are ignored. |
 | `fill` | Pours / planes missing from the Gerbers (e.g. zones never filled before plotting — this exports cleanly, with no error) | Copper area per layer relative to the board area; fail below `--min LAYER=RATIO`. |
-| `dfm` | Values below your fab's minimums | Measures trace widths, gaps **between conductors** and **within one conductor**, copper-to-edge, drill sizes, hole-to-hole, hole-to-edge, via and PTH annular rings, silk line widths. Judges only against a rules file **you** fill in (`--rules`). |
+| `dfm` | Values below your fab's minimums; **copper outside the board** | Measures trace widths, gaps **between conductors** and **within one conductor**, copper-to-edge, drill sizes, hole-to-hole, hole-to-edge, via and PTH annular rings, silk line widths. Judges them only against a rules file **you** fill in (`--rules`). Copper entirely off the board, or crossing the board edge, fails with or without rules (see [Board edge](#board-edge)). |
 | `freeze` | A frozen file rewritten or changed by a later tool run (a "save" that dropped nets, a regenerated board, a re-export into the upload folder) | `freeze record` stores a SHA-256 and a fingerprint of what each file means; `freeze check` reports SAME / **EQUIVALENT** (bytes differ, geometry or content identical: new UUIDs, dates, aperture numbers, item order) / **CHANGED** / MISSING / NEW. |
 | `wrongnet` | A track or via touching a pad of **another net** in the `.kicad_pcb` (a track end on the neighbouring pad of a mirrored footprint) | Real pad shapes (rect, roundrect, oval, trapezoid, custom; absolute angles) against track and via copper, per copper layer; net-tie footprints respected. Database-side; `netcheck` sees the same short in the Gerbers. |
 | `libcheck` | A symbol or footprint that does not exist on disk, a disabled library, a symbol pin with no footprint pad | Resolves `Library:Name` through the project and global `sym-lib-table` / `fp-lib-table` (nested tables, `${VARS}`), reads the `.kicad_sym` / `.kicad_mod`, compares pin and pad **numbers**. On a parts list before generation, or on a schematic. |
@@ -38,7 +38,7 @@ a no-connect pin tied to a net, a clear-polarity cut, an unsupported Gerber feat
 
 | Code | Meaning |
 |---|---|
-| 0 | all checks passed |
+| 0 | all checks passed; for `fill` / `dfm` run without limits, *measured only*: the output says `MEASURED ONLY — not judged` and the JSON has `"judged": false` (`dfm` still fails on copper outside the board) |
 | 1 | a check failed |
 | 2 | **the input could not be checked** (unsupported Gerber feature, missing file, bad arguments). Never read this as "probably fine". |
 
@@ -112,6 +112,32 @@ Point the commands at **the exact folder you upload** (unzip the archive first),
 No fab rules are built in. Capabilities change and depend on layer count, copper weight and service tier, and
 a wrong number baked into a checker is worse than none. Copy [`examples/rules.example.json`](examples/rules.example.json),
 fill it from your fab's current capabilities page, and pass it with `--rules`.
+
+Every non-null rule must be judged. A rule that cannot be (an unknown rule name, an edge rule without an outline
+file, a drill rule without a drill file, a ring rule without `--pcb`, a silk rule without silkscreen files), or a file
+whose rules are all null, is reported as NOT JUDGED and `dfm` exits 2 unless a violation already made it FAIL; set a
+rule to null if it does not apply. Copper gaps are searched up to the largest spacing rule automatically, so a gap
+just below your minimum cannot fall outside the search.
+
+### Board edge
+
+The board edge is the **centre line** of the outline strokes in the Profile / Edge_Cuts file ("the profile is the
+center line of the stroked line": K. Tavernier, Ucamco, *The Gerber Guide, Chapter 3: The PCB Profile*, 2015).
+Closed loops inside the outline are cut-outs. Outline arcs are followed to within 1 µm. End points closer than half
+the stroke width are joined, since their drawn ends overlap (CAD tools round an arc's end and the next line's start
+separately; 1 µm for an outline drawn without width). An outline that still does not close is exit 2.
+
+`dfm` then sorts copper beyond the edge, needing no fab rule:
+
+| Kind | Meaning | Result |
+|---|---|---|
+| off-board | a piece of copper with nothing on the board (a part placed beside the board, copper in a cut-out) | FAIL |
+| over-edge | copper crossing the edge: the fab cuts through it | FAIL |
+| castellated | copper beyond the edge around a plated hole the edge cuts | NOTE: castellation is a separate fab option, make sure it is ordered |
+
+Copper reaching up to 5 µm past the edge counts as *at* the edge: pours drawn to the edge with zero clearance end
+on the centre line. Whether copper may touch the edge at all is your fab's `min_copper_to_edge_mm`, which is measured
+to the centre line, ignoring castellated pads (and `min_hole_to_edge_mm` ignores castellated holes).
 
 ## For AI agents
 

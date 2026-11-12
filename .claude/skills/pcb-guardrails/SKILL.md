@@ -20,7 +20,8 @@ re-export to "make it pass" without saying so: the point is to check what the fa
    pour (ask the human for the layers if the stack-up is not documented).
 5. Manufacturing minimums: `pcb-guardrails dfm <gerber-folder> --pcb <board>.kicad_pcb --rules <rules.json>` —
    only with a rules file the human filled from the fab's current capabilities. Without one, report the
-   measurements and say they were not judged.
+   measurements and say they were not judged. Copper outside the board (`EDGE` lines) fails with or without
+   rules; pass a castellation `NOTE` to the human, since castellation must be ordered from the fab.
 6. Design database (when the `.kicad_sch` / `.kicad_pcb` are available):
    `pcb-guardrails wrongnet <board>.kicad_pcb`, and when the project has a `parts.csv`:
    `pcb-guardrails dnp --parts parts.csv --sch <board>.kicad_sch --pcb <board>.kicad_pcb` and

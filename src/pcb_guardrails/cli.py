@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .dfm import apply_rules, run_dfm
+from .dfm import SPACING_KEYS, active_rules, apply_rules, edge_problems, run_dfm, unjudgeable
 from .dnp import run_dnp
 from .fill import run_fill
 from . import freeze as _freeze
@@ -109,8 +109,15 @@ def _print_netcheck_text(r, files) -> None:
 
 def cmd_dfm(a) -> int:
     files = discover(a.gerbers)
+    if not files.copper:
+        raise UnsupportedInput("no copper layers found")
+    rules = json.loads(Path(a.rules).read_text()) if a.rules else None
+    window = a.gap_window
+    if rules:   # gaps are only searched up to the window: it must reach past the largest spacing rule
+        window = max([window] + [float(rules[k]) + 0.05 for k in SPACING_KEYS if rules.get(k) is not None])
     pads, vias = load_pcb(a.pcb) if a.pcb else (None, None)
-    m = run_dfm(files, pads, vias, gap_window=a.gap_window)
+    m = run_dfm(files, pads, vias, gap_window=window)
+    m["gap_window_mm"] = window
     for l, info in m["layers"].items():
         print(f"  {l}: trace min {info['min_trace_width_mm']} mm, gap between conductors {info['min_gap_between_conductors_mm']} mm "
               f"at {info['min_gap_between_conductors_at_kicad']}, within a conductor {info['min_gap_within_conductor_mm']} mm"
@@ -126,18 +133,45 @@ def cmd_dfm(a) -> int:
     for side, s in m["silk"].items():
         w = s["min_line_width_mm"]
         print(f"  silk {side}: min line {w} mm" if w is not None else f"  silk {side}: no stroked lines (flashes/regions only)")
-    violations = []
-    if a.rules:
-        rules = json.loads(Path(a.rules).read_text())
+    edge = edge_problems(m)
+    for e in edge[:20]:
+        what = {"off-board": "copper entirely outside the board", "over-edge": "copper crosses the board edge"}[e["kind"]]
+        print(f"  EDGE {e['layer']}: {what}, {e['area_mm2']} mm2 reaching {e['beyond_edge_mm']} mm past the edge "
+              f"at {e['at_kicad']}")
+    if len(edge) > 20:
+        print(f"  ... {len(edge) - 20} more (see --json)")
+    ncast = m.get("edge", {}).get("castellated_holes", 0)
+    if ncast:
+        print(f"  NOTE: {ncast} plated holes are cut by the board edge (castellated); copper around them may pass "
+              "the edge. Castellation is a separate fab option: make sure it is ordered.")
+    violations, not_judged = [], []
+    if rules is not None:
         violations = apply_rules(m, rules)
+        not_judged = unjudgeable(rules, files, bool(a.pcb))
         for v in violations:
             print(f"  VIOLATION {v}")
-        print("PASS" if not violations else "FAIL")
-    else:
-        print("(measured only; pass --rules <your fab's rules.json> to judge)")
-    m["violations"] = violations
+        for nj in not_judged:
+            print(f"  NOT JUDGED {nj['rule']}: {nj['reason']}")
+        if not active_rules(rules):
+            not_judged.append({"rule": "(all)", "reason": "every rule in the file is null"})
+            print("  NOT JUDGED: every rule in the file is null")
+    m["violations"], m["not_judged"], m["judged"] = violations, not_judged, rules is not None
+    m["edge_problems"] = edge
     _write_json(a.json, m)
-    return FAIL if violations else PASS
+    if edge:   # needs no fab rule: copper outside the board is wrong for every fab
+        print("FAIL")
+        return FAIL
+    if rules is None:
+        print("MEASURED ONLY — not judged (pass --rules <your fab's rules.json> to judge)")
+        return PASS
+    if violations:
+        print("FAIL")
+        return FAIL
+    if not_judged:
+        print("CANNOT CHECK: some requested rules could not be judged (listed above)")
+        return CANNOT
+    print("PASS")
+    return PASS
 
 
 def cmd_fill(a) -> int:
@@ -147,6 +181,11 @@ def cmd_fill(a) -> int:
         k, v = spec.split("=")
         mins[k] = float(v)
     r = run_fill(files, mins)
+    unknown = sorted(set(mins) - set(r["layers"]))
+    if unknown:   # a typo in a layer name must not turn a requested judgment into a silent pass
+        raise UnsupportedInput(f"--min names layers that are not in the files: {', '.join(unknown)} "
+                               f"(copper layers found: {', '.join(r['layers'])})")
+    r["judged"] = bool(mins)
     print(f"board area {r['board_area_mm2']} mm2")
     for l, i in r["layers"].items():
         need = mins.get(l)
@@ -154,7 +193,8 @@ def cmd_fill(a) -> int:
         print(f"  {l:<7} copper {i['coverage']:.1%}{flag}")
     _write_json(a.json, r)
     if not mins:
-        print("(measured only; pass --min LAYER=RATIO, e.g. --min In1.Cu=0.8, to judge)")
+        print("MEASURED ONLY — not judged (pass --min LAYER=RATIO, e.g. --min In1.Cu=0.8, to judge)")
+        return PASS
     print("PASS" if r["ok"] else "FAIL")
     return PASS if r["ok"] else FAIL
 
