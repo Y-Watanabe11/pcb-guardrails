@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pcb-guardrails"
-version = "0.2.0"
+version = "0.2.1"
 description = "Independent checks of what the PCB fab actually receives (Gerber + drill vs. schematic netlist), for AI-assisted and human PCB design."
 readme = "README.md"
 license = "MIT"

@@ -3,6 +3,14 @@
 Exit codes are part of the interface (0 pass, 1 fail, 2 not checked); every change to what they mean is listed
 under **Changed**.
 
+## [0.2.1] — 2026-11-13
+
+No code changes.
+
+- Releases are archived on Zenodo, which gives each release a DOI; the author and ORCID iD come from
+  `CITATION.cff`.
+- README: how to cite.
+
 ## [0.2.0] — 2026-11-12
 
 ### Added

@@ -50,7 +50,7 @@ does not understand will report a broken board as clean.
 From GitHub (not on PyPI yet):
 
 ```bash
-pip install "git+https://github.com/Y-Watanabe11/pcb-guardrails@v0.2.0"
+pip install "git+https://github.com/Y-Watanabe11/pcb-guardrails@v0.2.1"
 ```
 
 From a clone, for development:
@@ -253,7 +253,12 @@ checks that a fab package has its files; pcb-guardrails checks what is in those 
 - ほかに、ベタの抜け（`fill`）、ファブの規則値との比較と基板外の銅（`dfm`）、凍結したファイルの書き換え（`freeze`）、
   別ネットのパッドに触れる配線（`wrongnet`）、ライブラリの実在とピン番号（`libcheck`）、DNP の食い違い（`dnp`）。
 - `netcheck --format agent` は AI エージェントが読んで動けるように、判定・証拠・原因の候補・次の手順を順に出力します。
-- インストール: `pip install "git+https://github.com/Y-Watanabe11/pcb-guardrails@v0.2.0"`（PyPI には未登録）。
+- インストール: `pip install "git+https://github.com/Y-Watanabe11/pcb-guardrails@v0.2.1"`（PyPI には未登録）。
+
+## Citing
+
+If pcb-guardrails helps your work, cite it with **Cite this repository** on the GitHub page (APA or BibTeX, from
+`CITATION.cff`). Each release is archived on Zenodo with its own DOI.
 
 ## License
 
