@@ -1,0 +1,95 @@
+<!doctype html>
+<!-- GitHub social preview card, 1280x640. Render to PNG with a headless Chrome:
+     chrome --headless --hide-scrollbars --window-size=1280,640 --screenshot=social-preview.png social-preview.html
+     The terminal lines are real output of `pcb-guardrails fill` on examples/demo.py's plane board. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>pcb-guardrails card</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --bg2: #0f1a2e;
+    --copper: #c98a4b;
+    --teal: #3aa6a0;
+    --text: #e8edf5;
+    --muted: #93a1b8;
+    --fail: #ff6b5e;
+    --term: #070c16;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; background: var(--bg); }
+  body {
+    position: relative;
+    font-family: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background: radial-gradient(1200px 700px at 85% 40%, var(--bg2), var(--bg) 70%);
+  }
+  svg.traces { position: absolute; inset: 0; }
+  .content { position: absolute; left: 80px; top: 72px; width: 1120px; }
+  h1 {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 76px; font-weight: 700; letter-spacing: -1px;
+  }
+  h1 .dash { color: var(--copper); }
+  .tagline { margin-top: 18px; font-size: 32px; line-height: 1.3; color: var(--text); max-width: 900px; }
+  .tagline b { color: var(--copper); font-weight: 600; }
+  .term {
+    margin-top: 40px; width: 930px;
+    background: var(--term); border: 1px solid #23324d; border-radius: 12px;
+    padding: 22px 28px;
+    font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 22px; line-height: 1.5;
+    white-space: pre; color: #cfd8e6;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  }
+  .term .prompt { color: var(--teal); }
+  .term .bad { color: var(--fail); font-weight: 700; }
+  .foot {
+    position: absolute; left: 80px; bottom: 50px; right: 80px;
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 22px; color: var(--muted); white-space: nowrap;
+  }
+  .foot .url { font-family: "SF Mono", Menlo, Consolas, monospace; color: var(--text); }
+</style>
+</head>
+<body>
+  <!-- decorative copper traces and vias, right side -->
+  <svg class="traces" width="1280" height="640" viewBox="0 0 1280 640" aria-hidden="true">
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.22">
+      <g stroke="var(--copper)" stroke-width="6">
+        <path d="M1280 70 H1150 L1090 130 V250"/>
+        <path d="M1280 110 H1170 L1120 160 V330 L1060 390 H990"/>
+        <path d="M1280 190 H1210 L1180 220 V470 L1130 520 V640"/>
+        <path d="M1040 0 V60 L1000 100 V180"/>
+      </g>
+      <g stroke="var(--teal)" stroke-width="4">
+        <path d="M1280 300 H1240 L1220 320 V560 L1180 600 V640"/>
+        <path d="M1280 400 H1250"/>
+        <path d="M1060 640 V590 L1020 550 H960"/>
+      </g>
+    </g>
+    <g opacity="0.3">
+      <circle cx="1090" cy="250" r="11" fill="none" stroke="var(--copper)" stroke-width="6"/>
+      <circle cx="990" cy="390" r="11" fill="none" stroke="var(--copper)" stroke-width="6"/>
+      <circle cx="1000" cy="180" r="11" fill="none" stroke="var(--copper)" stroke-width="6"/>
+      <circle cx="960" cy="550" r="9" fill="none" stroke="var(--teal)" stroke-width="4"/>
+      <!-- the via that lost its drill: pad without a hole -->
+      <circle cx="1250" cy="400" r="12" fill="var(--teal)"/>
+    </g>
+  </svg>
+
+  <div class="content">
+    <h1>pcb<span class="dash">-</span>guardrails</h1>
+    <p class="tagline">DRC checks the design database.<br><b>This checks what the fab receives.</b></p>
+<div class="term"><span class="prompt">$</span> pcb-guardrails fill demo/plane --min In1.Cu=0.8 --min In2.Cu=0.8
+  In1.Cu  copper 0.0%  <span class="bad">FAIL</span> (need >= 80%)
+  In2.Cu  copper 0.0%  <span class="bad">FAIL</span> (need >= 80%)
+<span class="bad">FAIL</span></div>
+  </div>
+
+  <div class="foot">
+    <span>Gerber + drill vs. schematic · KiCad · IPC-D-356</span>
+    <span class="url">github.com/Y-Watanabe11/pcb-guardrails</span>
+  </div>
+</body>
+</html>
