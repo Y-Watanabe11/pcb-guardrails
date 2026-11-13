@@ -1,5 +1,7 @@
 # pcb-guardrails
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24185580.svg)](https://doi.org/10.5281/zenodo.24185580)
+
 Verification guardrails for AI-assisted PCB design — independent checks of what the fab actually receives
 (Gerber + drill vs. schematic netlist), each born from a real failure.
 
@@ -258,7 +260,8 @@ checks that a fab package has its files; pcb-guardrails checks what is in those 
 ## Citing
 
 If pcb-guardrails helps your work, cite it with **Cite this repository** on the GitHub page (APA or BibTeX, from
-`CITATION.cff`). Each release is archived on Zenodo with its own DOI.
+`CITATION.cff`). Each release is archived on Zenodo with its own DOI;
+[10.5281/zenodo.24185580](https://doi.org/10.5281/zenodo.24185580) always points to the latest release.
 
 ## License
 
