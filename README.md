@@ -10,14 +10,32 @@ the fab are wrong: a pour that was never filled, a layer that was not exported, 
 schematic, a via whose drill went missing. CAD-internal checks (DRC, ERC) look at the database. This tool looks
 at **the deliverable**, rebuilds it from scratch, and compares it with the schematic.
 
+A via whose drill went missing from the export. The board file still has the via, so the CAD tool sees the net
+as connected:
+
 ```
-$ pcb-guardrails netcheck fab/gerbers --netlist board.net.xml --pcb board.kicad_pcb
-pads 412, schematic nets with pads 68, copper layers 4, drill files 1
-OPEN 0 / SHORT 1 / NO-COPPER 0 / BREAKOUT 0 / VIA-NO-HOLE 0 / pads of parts not in the schematic 0 / copper islands without pads 0
-  SHORT +3V3 + SPI_CLK: C12.1, R7.2, U3.5
-  F.Cu: smallest gap between different copper 0.15 mm (GND / +3V3) at [41.2, 33.85]
+$ pcb-guardrails netcheck demo/novia/gerbers --netlist demo/novia/board.net.xml --pcb demo/novia/board.kicad_pcb
+pads 5, schematic nets with pads 2, copper layers 2, drill files 1
+OPEN 1 / SHORT 0 / NO-COPPER 0 / BREAKOUT 0 / VIA-NO-HOLE 1 / pads of parts not in the schematic 0 / copper islands without pads 0
+  OPEN  B: R1.1 | R2.2
+  VIA-NO-HOLE via (0.3 mm drill) at [15.0, -14.0] in the board data has no plated hole in the drill files
 FAIL
 ```
+
+Inner planes plotted before the zones were filled. The Gerbers are valid files; they just have no ground plane:
+
+```
+$ pcb-guardrails fill demo/plane --min In1.Cu=0.8 --min In2.Cu=0.8
+board area 600.0 mm2
+  F.Cu    copper 0.2%
+  In1.Cu  copper 0.0%  FAIL (need >= 80%)
+  In2.Cu  copper 0.0%  FAIL (need >= 80%)
+  B.Cu    copper 0.2%
+FAIL
+```
+
+Both are real output on synthetic boards (no real design involved). Reproduce them from a clone with
+`python examples/demo.py demo`; the same export without the faults (`demo/good`) passes.
 
 ## What it checks
 

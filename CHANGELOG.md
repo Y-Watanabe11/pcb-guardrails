@@ -3,6 +3,11 @@
 Exit codes are part of the interface (0 pass, 1 fail, 2 not checked); every change to what they mean is listed
 under **Changed**.
 
+## [Unreleased]
+
+- README: the example output at the top is real output on synthetic boards (it was illustrative), reproducible
+  with `python examples/demo.py demo`; a test fails if the README and the tool's output differ.
+
 ## [0.2.1] — 2026-11-13
 
 No code changes.
