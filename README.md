@@ -67,10 +67,16 @@ does not understand will report a broken board as clean.
 
 ## Install
 
-From GitHub (not on PyPI yet):
+From PyPI:
 
 ```bash
-pip install "git+https://github.com/Y-Watanabe11/pcb-guardrails@v0.2.1"
+pip install pcb-guardrails
+```
+
+Or a tagged release from GitHub:
+
+```bash
+pip install "git+https://github.com/Y-Watanabe11/pcb-guardrails@v0.2.2"
 ```
 
 From a clone, for development:
@@ -167,7 +173,7 @@ Point the commands at **the exact folder you upload** (unzip the archive first),
 ### Fab rules
 
 No fab rules are built in. Capabilities change and depend on layer count, copper weight and service tier, and
-a wrong number baked into a checker is worse than none. Copy [`examples/rules.example.json`](examples/rules.example.json),
+a wrong number baked into a checker is worse than none. Copy [`examples/rules.example.json`](https://github.com/Y-Watanabe11/pcb-guardrails/blob/main/examples/rules.example.json),
 fill it from your fab's current capabilities page, and pass it with `--rules`.
 
 Every non-null rule must be judged. A rule that cannot be (an unknown rule name, an edge rule without an outline
@@ -204,11 +210,11 @@ OPENs they cause) and the next step, including what not to do. Names of nets and
 and are printed only inside `«...»`, on one line, so a net named like an instruction cannot pass for part of the
 report. The JSON output (`--json`) carries the same facts for programs.
 
-- [`AGENTS.md`](AGENTS.md) — rules for an agent that designs or edits PCBs (pin numbers, sources of truth, what
+- [`AGENTS.md`](https://github.com/Y-Watanabe11/pcb-guardrails/blob/main/AGENTS.md) — rules for an agent that designs or edits PCBs (pin numbers, sources of truth, what
   never to run on production files, when to stop and ask).
-- [`.claude/skills/pcb-guardrails/SKILL.md`](.claude/skills/pcb-guardrails/SKILL.md) — a Claude Code skill that
+- [`.claude/skills/pcb-guardrails/SKILL.md`](https://github.com/Y-Watanabe11/pcb-guardrails/blob/main/.claude/skills/pcb-guardrails/SKILL.md) — a Claude Code skill that
   runs the checks before fab files are handed over and reports the result without "fixing" the Gerbers.
-- [`docs/incidents.md`](docs/incidents.md) — the failures behind each check.
+- [`docs/incidents.md`](https://github.com/Y-Watanabe11/pcb-guardrails/blob/main/docs/incidents.md) — the failures behind each check.
 
 ## Limitations
 
@@ -243,12 +249,12 @@ report. The JSON output (`--json`) carries the same facts for programs.
 
 The 20 demo projects shipped in KiCad's source tree (`demos/`, from a 4-layer microwave board to a 1500-part VME
 board) were exported with KiCad 10.0.4 on copies and checked, then exported again in every Gerber / drill option
-KiCad offers. See [`docs/public-boards.md`](docs/public-boards.md) for the method and every finding; in short, each
+KiCad offers. See [`docs/public-boards.md`](https://github.com/Y-Watanabe11/pcb-guardrails/blob/main/docs/public-boards.md) for the method and every finding; in short, each
 remaining FAIL is either confirmed by KiCad's own DRC / schematic parity or is a real difference in the fab files.
 
 ## Roadmap
 
-- v0.2 (done, see [`CHANGELOG.md`](CHANGELOG.md)): design-freeze fingerprints, library preflight with pin/pad
+- v0.2 (done, see [`CHANGELOG.md`](https://github.com/Y-Watanabe11/pcb-guardrails/blob/main/CHANGELOG.md)): design-freeze fingerprints, library preflight with pin/pad
   numbers, tracks on wrong-net pads, DNP consistency; BREAKOUT and VIA-NO-HOLE; reports for AI agents; IPC-D-356
   for other CAD tools; the board edge as the outline's centre line; nothing unjudged is ever a pass; validated on
   KiCad's public demo boards.
@@ -259,7 +265,7 @@ remaining FAIL is either confirmed by KiCad's own DRC / schematic parity or is a
 
 Related: [FabGate](https://pypi.org/project/fabgate/) wraps KiCad's DRC and schematic parity in a scored gate and
 checks that a fab package has its files; pcb-guardrails checks what is in those files. See
-[`docs/comparison.md`](docs/comparison.md) for a fault-by-fault comparison.
+[`docs/comparison.md`](https://github.com/Y-Watanabe11/pcb-guardrails/blob/main/docs/comparison.md) for a fault-by-fault comparison.
 
 ## 日本語の概要
 
@@ -273,7 +279,7 @@ checks that a fab package has its files; pcb-guardrails checks what is in those 
 - ほかに、ベタの抜け（`fill`）、ファブの規則値との比較と基板外の銅（`dfm`）、凍結したファイルの書き換え（`freeze`）、
   別ネットのパッドに触れる配線（`wrongnet`）、ライブラリの実在とピン番号（`libcheck`）、DNP の食い違い（`dnp`）。
 - `netcheck --format agent` は AI エージェントが読んで動けるように、判定・証拠・原因の候補・次の手順を順に出力します。
-- インストール: `pip install "git+https://github.com/Y-Watanabe11/pcb-guardrails@v0.2.1"`（PyPI には未登録）。
+- インストール: `pip install pcb-guardrails`
 
 ## Citing
 

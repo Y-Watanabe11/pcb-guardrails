@@ -3,8 +3,14 @@
 Exit codes are part of the interface (0 pass, 1 fail, 2 not checked); every change to what they mean is listed
 under **Changed**.
 
-## [Unreleased]
+## [Unreleased] (0.2.2)
 
+No code changes.
+
+- Published on PyPI: `pip install pcb-guardrails`. Releases are uploaded by a GitHub Actions workflow with PyPI
+  Trusted Publishing (no API token stored anywhere); a manual run uploads to TestPyPI instead.
+- README links point to absolute GitHub URLs, so they also work on the PyPI page.
+- Package metadata: project URLs (repository, issues, changelog, DOI) and classifiers.
 - README: the example output at the top is real output on synthetic boards (it was illustrative), reproducible
   with `python examples/demo.py demo`; a test fails if the README and the tool's output differ.
 
