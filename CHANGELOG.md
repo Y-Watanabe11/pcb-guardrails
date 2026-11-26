@@ -3,6 +3,21 @@
 Exit codes are part of the interface (0 pass, 1 fail, 2 not checked); every change to what they mean is listed
 under **Changed**.
 
+## [Unreleased]
+
+### Added
+
+- Claude Code plugin: `/plugin marketplace add Y-Watanabe11/pcb-guardrails`, then
+  `/plugin install pcb-guardrails@pcb-guardrails`. It contains the skill; the command itself still comes from
+  `pip install pcb-guardrails`.
+- The skill is also in `.agents/skills/` for Codex. A test fails if the copies of the skill differ, or if the
+  plugin version differs from the package version.
+
+### Changed
+
+- The skill first checks that `pcb-guardrails` is installed (0.2.2 or later) and asks the human to install it if
+  not; without the tool, it reports that nothing was checked.
+
 ## [0.2.2] — 2026-11-26
 
 No code changes.

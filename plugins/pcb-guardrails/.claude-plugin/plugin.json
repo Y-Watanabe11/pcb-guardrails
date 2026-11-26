@@ -1,0 +1,10 @@
+{
+  "name": "pcb-guardrails",
+  "description": "Check PCB fab files (Gerber + drill) against the schematic before they are uploaded. Needs the pcb-guardrails command: pip install pcb-guardrails",
+  "version": "0.2.2",
+  "author": {
+    "name": "Yuki Watanabe"
+  },
+  "homepage": "https://github.com/Y-Watanabe11/pcb-guardrails",
+  "repository": "https://github.com/Y-Watanabe11/pcb-guardrails"
+}

@@ -2,3 +2,7 @@ include CHANGELOG.md AGENTS.md CITATION.cff
 recursive-include tests *.py
 recursive-include docs *.md
 recursive-include examples *
+include .claude-plugin/marketplace.json
+recursive-include plugins *
+recursive-include .claude/skills *.md
+recursive-include .agents/skills *.md

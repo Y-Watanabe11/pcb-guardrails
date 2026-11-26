@@ -1,0 +1,13 @@
+{
+  "name": "pcb-guardrails",
+  "description": "Plugins for checking PCB fab files before they are uploaded",
+  "owner": {
+    "name": "Y-Watanabe11"
+  },
+  "plugins": [
+    {
+      "name": "pcb-guardrails",
+      "source": "./plugins/pcb-guardrails"
+    }
+  ]
+}

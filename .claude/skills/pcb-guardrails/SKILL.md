@@ -10,6 +10,9 @@ re-export to "make it pass" without saying so: the point is to check what the fa
 
 ## Steps
 
+0. Check that the tool is installed: `pcb-guardrails --version` (0.2.2 or later). If the command is missing, ask
+   the human to install it (`pip install pcb-guardrails`, Python 3.10 or later); do not install packages without
+   their OK. Without the tool nothing was checked: say so, never report the board as passing.
 1. Export the schematic netlist (KiCad):
    `kicad-cli sch export netlist --format kicadxml -o <tmp>/board.net.xml <board>.kicad_sch`
 2. Classify the files: `pcb-guardrails layers <gerber-folder>` — confirm every copper layer, the outline and the

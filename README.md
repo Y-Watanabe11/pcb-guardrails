@@ -212,8 +212,19 @@ report. The JSON output (`--json`) carries the same facts for programs.
 
 - [`AGENTS.md`](https://github.com/Y-Watanabe11/pcb-guardrails/blob/main/AGENTS.md) — rules for an agent that designs or edits PCBs (pin numbers, sources of truth, what
   never to run on production files, when to stop and ask).
-- [`.claude/skills/pcb-guardrails/SKILL.md`](https://github.com/Y-Watanabe11/pcb-guardrails/blob/main/.claude/skills/pcb-guardrails/SKILL.md) — a Claude Code skill that
+- [`SKILL.md`](https://github.com/Y-Watanabe11/pcb-guardrails/blob/main/plugins/pcb-guardrails/skills/pcb-guardrails/SKILL.md) — a skill (Agent Skills format) that
   runs the checks before fab files are handed over and reports the result without "fixing" the Gerbers.
+  - Claude Code, in any project, as a plugin (the plugin does not install the command; run
+    `pip install pcb-guardrails` first):
+
+    ```
+    /plugin marketplace add Y-Watanabe11/pcb-guardrails
+    /plugin install pcb-guardrails@pcb-guardrails
+    ```
+
+  - Codex reads skills from `.agents/skills/` in a project or `~/.agents/skills/`; copy the `pcb-guardrails`
+    folder from [`.agents/skills/`](https://github.com/Y-Watanabe11/pcb-guardrails/tree/main/.agents/skills) there.
+  - Inside a clone of this repository, Claude Code finds the same skill in `.claude/skills/`.
 - [`docs/incidents.md`](https://github.com/Y-Watanabe11/pcb-guardrails/blob/main/docs/incidents.md) — the failures behind each check.
 
 ## Limitations
@@ -272,7 +283,9 @@ checks that a fab package has its files; pcb-guardrails checks what is in those 
 基板メーカーに渡すファイル（ガーバーとドリル）だけから銅のつながりを組み直し、回路図のネットリストと照合する
 ツールです。CAD の中の検査（DRC・ERC）では見えない、書き出しの段階の間違い（塗っていないベタ、抜けた層、
 回路図とずれた PCB、消えたビアの穴）を捕まえます。AI エージェントが基板を設計するときの安全柵として、
-エージェント向けの規則（`AGENTS.md`）と Claude Code のスキルも同梱しています。
+エージェント向けの規則（`AGENTS.md`）と、検査を実行するスキルも同梱しています。スキルは Claude Code のプラグイン
+（`/plugin marketplace add Y-Watanabe11/pcb-guardrails`、続けて `/plugin install pcb-guardrails@pcb-guardrails`）
+として入れられ、Codex でも使えます（`.agents/skills/`）。
 
 - 終了コードは 0 = 合格、1 = 不合格、2 = 確認できなかった（合格ではない）。判定していないものを合格とは表示しません。
 - 回路図との照合は KiCad（XML ネットリストと `.kicad_pcb`）。他の CAD は IPC-D-356 ネットリスト（基板側のネット）で照合できます。
