@@ -3,7 +3,7 @@
 Exit codes are part of the interface (0 pass, 1 fail, 2 not checked); every change to what they mean is listed
 under **Changed**.
 
-## [Unreleased] (0.2.2)
+## [0.2.2] — 2026-11-26
 
 No code changes.
 
