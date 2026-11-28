@@ -10,7 +10,7 @@ re-export to "make it pass" without saying so: the point is to check what the fa
 
 ## Steps
 
-0. Check that the tool is installed: `pcb-guardrails --version` (0.2.2 or later). If the command is missing, ask
+0. Check that the tool is installed: `pcb-guardrails --version` (0.2.3 or later). If the command is missing, ask
    the human to install it (`pip install pcb-guardrails`, Python 3.10 or later); do not install packages without
    their OK. Without the tool nothing was checked: say so, never report the board as passing.
 1. Export the schematic netlist (KiCad):

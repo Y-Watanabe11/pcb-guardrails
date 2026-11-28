@@ -76,7 +76,7 @@ pip install pcb-guardrails
 Or a tagged release from GitHub:
 
 ```bash
-pip install "git+https://github.com/Y-Watanabe11/pcb-guardrails@v0.2.2"
+pip install "git+https://github.com/Y-Watanabe11/pcb-guardrails@v0.2.3"
 ```
 
 From a clone, for development:

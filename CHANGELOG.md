@@ -3,7 +3,7 @@
 Exit codes are part of the interface (0 pass, 1 fail, 2 not checked); every change to what they mean is listed
 under **Changed**.
 
-## [Unreleased]
+## [0.2.3] — 2026-11-28
 
 ### Added
 
@@ -21,7 +21,7 @@ under **Changed**.
   copper layers found is exit 2: a board whose bottom copper file is missing is now exit 2, not OPEN.
 - `netcheck`: a pad with no copper at its centre and two separate pieces of copper within 0.05 mm is exit 2 (one of
   them was picked).
-- The skill first checks that `pcb-guardrails` is installed (0.2.2 or later) and asks the human to install it if
+- The skill first checks that `pcb-guardrails` is installed (0.2.3 or later) and asks the human to install it if
   not; without the tool, it reports that nothing was checked.
 
 ### Fixed
