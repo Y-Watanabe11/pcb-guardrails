@@ -234,7 +234,8 @@ report. The JSON output (`--json`) carries the same facts for programs.
 - Does not check what a pin *means* (`libcheck` compares pin and pad numbers only), footprint geometry against a datasheet, impedance,
   current capacity, creepage/clearance for high voltage, or anything electrical beyond connectivity.
 - Supported Gerber subset: RS-274X with X2 attributes, `%FSLA%`, mm or inch, circular/rect/obround/polygon
-  apertures, aperture macros (primitives 1, 4, 5, 20, 21), regions, multi-quadrant arcs, dark and clear
+  apertures with or without their round hole (a hole that does not fit strictly inside, or the deprecated rectangular
+  hole, is exit 2), aperture macros (primitives 1, 4, 5, 20, 21), regions, multi-quadrant arcs, dark and clear
   polarity. Step-and-repeat, image transforms (`%LM/LR/LS%`) and single-quadrant arcs stop with exit 2.
 - Drill files: Excellon with decimal coordinates, or integer coordinates when the digit format is stated (KiCad's
   `; FORMAT={3:3/...}` comment or a `METRIC,TZ,000.000` header; leading / trailing zero suppression or kept
@@ -242,6 +243,10 @@ report. The JSON output (`--json`) carries the same facts for programs.
   `TA.AperFunction` or the file function; a mixed file without either (KiCad's "minimal header") stops with exit 2,
   because plated and non-plated holes cannot be told apart. Plated holes below 0.01 mm join nothing and are
   reported (KiCad writes a 0.00001 mm via drill as `T1C0.000`).
+- Blind and buried vias: a plated hole joins only the copper layers its drill file names in the file function
+  (`Plated,1,2,Blind`; KiCad writes one drill file per layer pair). On a board with more than two copper layers, a
+  drill file that names no layer span is exit 2, and so is a span reaching past the copper layers found (a copper
+  file is probably missing).
 - `netcheck`: footprints with `net_tie_pad_groups` (bridged solder jumpers, star-ground ties) join their nets on
   purpose and are listed as NET-TIE, not SHORT. Pins KiCad's netlist places on one shared `unconnected-(...)` net may
   share copper; a pin with no net must sit alone. A footprint pad the symbol has no pin for (read from the netlist's

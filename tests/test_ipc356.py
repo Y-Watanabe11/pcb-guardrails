@@ -25,10 +25,15 @@ def test_clean_board_passes_and_origin_is_found(tmp_path, capsys):
 
 
 @pytest.mark.parametrize("fault, key", [("open_A", "opens"), ("short_AB", "shorts"), ("nc_short", "shorts"),
-                                        ("no_bottom", "opens"), ("shift_bottom", "breakouts")])
+                                        ("shift_bottom", "breakouts")])
 def test_faults_are_caught(tmp_path, capsys, fault, key):
     code, r, _ = run(tmp_path, capsys, {fault})
     assert code == 1 and r[key]
+
+
+def test_missing_layer_file_cannot_pass(tmp_path, capsys):
+    code, _, out = run(tmp_path, capsys, {"no_bottom"})
+    assert code == 2 and "copper layer file may be missing" in out
 
 
 def test_unconnected_pad_must_sit_alone(tmp_path, capsys):

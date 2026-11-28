@@ -75,7 +75,32 @@ def _macro_shape(body: list[str], params: list[float]):
     return g.difference(unary_union(clear)) if clear else g
 
 
+_HOLE_AT = {"C": 1, "R": 2, "O": 2, "P": 3}   # index of the optional round hole parameter
+_MAX_PARAMS = {"C": 2, "R": 3, "O": 3, "P": 4}
+
+
 def _aperture_shape(kind: str, p: list[float], macros: dict[str, list[str]]):
+    """Standard apertures C, R, O, P with their optional round hole, and macro apertures. The hole is the last
+    parameter, centred on the aperture; for P it comes after the rotation. The hole "must strictly fit within the
+    standard aperture" and is not part of it: what lies under it stays (Gerber Layer Format Specification 2026.05,
+    4.4.1-4.4.6, pp. 52-57). The deprecated rectangular hole (an extra parameter) stops the check."""
+    if kind in _MAX_PARAMS:
+        if len(p) > _MAX_PARAMS[kind] or len(p) < (1 if kind == "C" else 2):
+            raise UnsupportedInput(f"standard aperture {kind} with {len(p)} parameters is not understood")
+        hole = p[_HOLE_AT[kind]] if len(p) > _HOLE_AT[kind] else None
+        g = _solid_aperture(kind, p)
+        if hole is None:
+            return g
+        h = Point(0, 0).buffer(hole / 2, 32)
+        if hole <= 0 or not g.contains_properly(h):
+            raise UnsupportedInput(f"aperture {kind} {p}: the hole does not fit strictly inside the aperture")
+        return g.difference(h)
+    if kind in macros:
+        return _macro_shape(macros[kind], p)
+    raise UnsupportedInput(f"aperture type {kind!r} is not defined")
+
+
+def _solid_aperture(kind: str, p: list[float]):
     if kind == "C":
         return Point(0, 0).buffer(p[0] / 2, 32)
     if kind == "R":
@@ -85,13 +110,9 @@ def _aperture_shape(kind: str, p: list[float], macros: dict[str, list[str]]):
         if w >= h:
             return LineString([(-(w - h) / 2, 0), ((w - h) / 2, 0)]).buffer(h / 2, 32)
         return LineString([(0, -(h - w) / 2), (0, (h - w) / 2)]).buffer(w / 2, 32)
-    if kind == "P":
-        d, n = p[0], int(p[1])
-        r0 = math.radians(p[2]) if len(p) > 2 else 0.0
-        return Polygon([(d / 2 * math.cos(r0 + 2 * math.pi * k / n), d / 2 * math.sin(r0 + 2 * math.pi * k / n)) for k in range(n)])
-    if kind in macros:
-        return _macro_shape(macros[kind], p)
-    raise UnsupportedInput(f"aperture type {kind!r} is not defined")
+    d, n = p[0], int(p[1])   # P
+    r0 = math.radians(p[2]) if len(p) > 2 else 0.0
+    return Polygon([(d / 2 * math.cos(r0 + 2 * math.pi * k / n), d / 2 * math.sin(r0 + 2 * math.pi * k / n)) for k in range(n)])
 
 
 def _arc_points(x, y, nx, ny, i, j, ccw, max_err=None):
@@ -237,6 +258,8 @@ def parse_gerber(path: str | Path, arc_max_err: float | None = None) -> GerberLa
                 kind, p = aps[cur]
                 if kind != "C":
                     raise UnsupportedInput(f"{path.name}: drawing with a non-circular aperture (D{cur} {kind}) is not supported")
+                if len(p) != 1:
+                    raise UnsupportedInput(f"{path.name}: drawing with a circular aperture that has a hole (D{cur}) is not supported")
                 w = p[0]
                 widths[round(w * unit, 4)] = widths.get(round(w * unit, 4), 0) + 1
                 line = LineString(seg) if len(seg) > 1 and (seg[0] != seg[-1] or len(seg) > 2) else None
@@ -282,6 +305,18 @@ class Hole:
     diameter: float
     plated: bool
     xy: tuple[float, float]
+    span: tuple[int, int] | None = None   # copper layers joined (1 = top), from the file function; None: not stated
+    source: str = ""                      # drill file name
+
+
+def layer_span(ff: tuple[str, ...] | None) -> tuple[int, int] | None:
+    """Copper layers a drill file's holes join, lowest first: ``Plated,1,2,Blind``, ``Plated,1,4,PTH,Drill``,
+    KiCad's ``MixedPlating,1,4``. The numbers count from the top, as in ``Copper,L1``, and "the from/to order is not
+    significant" (Gerber Layer Format Specification 2026.05, 5.6.3, p. 142). None when the file states no span."""
+    if not ff or len(ff) < 3 or not (ff[1].isdigit() and ff[2].isdigit()):
+        return None
+    a, b = int(ff[1]), int(ff[2])
+    return min(a, b), max(a, b)
 
 
 def parse_drill(path: str | Path) -> list[Hole]:
@@ -329,9 +364,11 @@ def parse_drill(path: str | Path) -> list[Hole]:
             raise UnsupportedInput(f"{path.name}: cannot tell whether tool T{t} is plated (no TA.AperFunction or file function)")
         return p
 
+    span = layer_span(ff)
+
     def add(geom, xy):
         d, _ = tools[cur]
-        holes.append(Hole(geom, d, tool_plated(cur), xy))
+        holes.append(Hole(geom, d, tool_plated(cur), xy, span, path.name))
 
     for raw in lines:
         s = raw.strip()
@@ -402,11 +439,12 @@ def _parse_gerber_drill(path: Path) -> list[Hole]:
     if not ff or ff[0] not in ("Plated", "NonPlated"):
         raise UnsupportedInput(f"{path.name}: Gerber drill file without a Plated/NonPlated file function")
     plated = ff[0] == "Plated"
+    span = layer_span(ff)
     holes = []
     for g in layer.objects:
         x0, y0, x1, y1 = g.bounds
         c = g.centroid
-        holes.append(Hole(g, round(min(x1 - x0, y1 - y0), 4), plated, (c.x, c.y)))
+        holes.append(Hole(g, round(min(x1 - x0, y1 - y0), 4), plated, (c.x, c.y), span, path.name))
     return holes
 
 

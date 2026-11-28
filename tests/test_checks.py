@@ -59,10 +59,11 @@ def test_missing_redundant_via_drill_is_caught(tmp_path):
     assert code == 1 and not r["opens"] and r["vias_without_hole"] == [{"xy_kicad": [25.0, -2.0], "drill_mm": 0.3}]
 
 
-def test_missing_layer_file_is_open(tmp_path):
-    code, r = run(tmp_path, {"no_bottom"})
-    assert code == 1
-    assert [o["net"] for o in r["opens"]] == ["B"]
+def test_missing_layer_file_cannot_pass(tmp_path, capsys):
+    """The drill file joins layers 1-2, but only the top copper is there."""
+    code, _ = run(tmp_path, {"no_bottom"})
+    assert code == 2
+    assert "only 1 copper layers were found" in capsys.readouterr().err
 
 
 def test_shifted_layer_leaves_pads_without_copper(tmp_path):

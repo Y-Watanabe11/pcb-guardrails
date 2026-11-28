@@ -15,8 +15,20 @@ under **Changed**.
 
 ### Changed
 
+- `netcheck`, `dfm`: a plated hole joins only the copper layers its drill file names (`TF.FileFunction,Plated,1,2,Blind`).
+  Blind and buried vias were joined to every layer, so a net that a blind via does not complete passed. On a board
+  with more than two copper layers, a drill file that states no layer span is exit 2 (was: through). A span past the
+  copper layers found is exit 2: a board whose bottom copper file is missing is now exit 2, not OPEN.
+- `netcheck`: a pad with no copper at its centre and two separate pieces of copper within 0.05 mm is exit 2 (one of
+  them was picked).
 - The skill first checks that `pcb-guardrails` is installed (0.2.2 or later) and asks the human to install it if
   not; without the tool, it reports that nothing was checked.
+
+### Fixed
+
+- The round hole of standard apertures (`%ADD10C,1X0.5*%`; for polygons after the rotation) was read as copper. A
+  hole that does not fit strictly inside its aperture, the deprecated rectangular hole, and a draw with a holed
+  aperture are exit 2.
 
 ## [0.2.2] — 2026-11-26
 

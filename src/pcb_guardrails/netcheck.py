@@ -4,7 +4,8 @@
     SHORT  one piece of copper carrying pads of two or more schematic nets
     NO-COPPER  a pad with no copper under it in the fab files (missing layer, shifted export, deleted pad)
 
-Plated holes join copper on every layer they pass through. The CAD tool's own connectivity engine is never
+Plated holes join copper on the layers their drill file names (``TF.FileFunction,Plated,1,2,Blind``): every layer
+for a through hole, only the stated pair for a blind or buried via. The CAD tool's own connectivity engine is never
 consulted: the point is to check what the fab will build, not what the design database believes.
 """
 from __future__ import annotations
@@ -49,6 +50,10 @@ class Copper:
     holes: list[Hole]
     uf: _UF
     trees: dict[str, tuple[STRtree, list[int], list]] = field(default_factory=dict)
+    hole_layers: list[frozenset[str]] = field(default_factory=list)   # per hole: the copper layers it joins
+
+    def joins(self, h_i: int, layer: str) -> bool:
+        return layer in self.hole_layers[h_i]
 
     @property
     def hole_base(self) -> int:
@@ -56,6 +61,24 @@ class Copper:
 
     def cluster(self, i: int) -> int:
         return self.uf.find(i)
+
+
+def hole_span(h: Hole, n: int) -> tuple[int, int]:
+    """The copper layers (1 = top .. n) a plated hole joins. A drill file that states no span is through only on a
+    board of one or two layers; with more, a hole may be blind or buried, so it cannot be checked."""
+    if h.span is None:
+        if n <= 2:
+            return 1, max(n, 1)
+        raise UnsupportedInput(f"{h.source}: the drill file does not state the layer span of its holes "
+                               f"(TF.FileFunction,Plated,<from>,<to>,...); on a board with {n} copper layers a hole may "
+                               "be blind or buried")
+    a, b = h.span
+    if not 1 <= a < b:   # a hole that joins one layer, or layer 0
+        raise UnsupportedInput(f"{h.source}: layer span {a},{b} not understood")
+    if b > n:
+        raise UnsupportedInput(f"{h.source}: the holes join copper layers {a},{b}, but only {n} copper layers were "
+                               "found: a copper layer file may be missing")
+    return a, b
 
 
 def build_copper(files: FabFiles) -> Copper:
@@ -70,6 +93,12 @@ def build_copper(files: FabFiles) -> Copper:
     for i, (l, _) in enumerate(items):
         by_layer[l].append(i)
     cu = Copper([copper_name(c[0], n) for c in files.copper], items, holes, uf)
+    for h in holes:
+        if h.plated:
+            a, b = hole_span(h, n)
+            cu.hole_layers.append(frozenset(copper_name(k, n) for k in range(a, b + 1)))
+        else:
+            cu.hole_layers.append(frozenset())
     for l, idx in by_layer.items():
         geoms = [items[i][1] for i in idx]
         tree = STRtree(geoms)
@@ -81,7 +110,9 @@ def build_copper(files: FabFiles) -> Copper:
     for h_i, h in enumerate(holes):
         if not h.plated or h.diameter < MIN_HOLE_MM:
             continue   # a zero-size "hole" is not drilled, so it is not plated and joins nothing
-        for tree, idx, _ in cu.trees.values():
+        for layer, (tree, idx, _) in cu.trees.items():
+            if not cu.joins(h_i, layer):
+                continue   # a blind or buried via does not reach this layer
             for j in tree.query(h.geom, predicate="intersects"):
                 uf.union(cu.hole_base + h_i, idx[j])
     return cu
@@ -102,8 +133,12 @@ def _pad_cluster(cu: Copper, pad: Pad) -> int | None:
         return None
     tree, idx, _ = cu.trees[layer]
     hits = [idx[j] for j in tree.query(pt, predicate="intersects")]
-    if not hits:
+    if not hits:   # no copper at the centre: accept copper within 0.05 mm, but only if it is one piece
         hits = [idx[j] for j in tree.query(pt.buffer(0.05), predicate="intersects")]
+        pieces = {cu.cluster(i) for i in hits}
+        if len(pieces) > 1:
+            raise UnsupportedInput(f"pad {pad.ref}.{pad.pin} on {layer}: no copper at its centre, and {len(pieces)} separate "
+                                   "pieces of copper within 0.05 mm; cannot tell which one it is on")
     return cu.cluster(hits[0]) if hits else None
 
 
@@ -147,12 +182,14 @@ def find_breakouts(cu: Copper, outline=None, full: float = 0.99) -> list[dict]:
     mis-registered layer, a pad too small for its hole). Holes that cross the board outline (castellated edges)
     are skipped; a layer with no copper at the hole (an unused inner-layer pad) is fine."""
     out = []
-    for h in cu.holes:
+    for h_i, h in enumerate(cu.holes):
         if not h.plated or h.diameter < MIN_HOLE_MM or h.geom.is_empty:
             continue
         if outline is not None and not outline.contains(h.geom):
             continue
         for layer, (tree, _idx, geoms) in cu.trees.items():
+            if not cu.joins(h_i, layer):
+                continue
             near = [geoms[j] for j in tree.query(h.geom, predicate="intersects")]
             if not near:
                 continue
